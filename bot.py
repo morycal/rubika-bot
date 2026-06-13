@@ -11,6 +11,42 @@ offset = 0
 
 games = {}
 
+# ---------------- DATA ----------------
+
+quiz_questions = [
+    ("پایتخت ایران؟", "تهران"),
+    ("2+2؟", "4"),
+    ("3×3؟", "9"),
+    ("آب چند درجه یخ می‌زند؟", "0"),
+    ("پایتخت ترکیه؟", "آنکارا"),
+    ("رنگ آسمان؟", "آبی"),
+    ("پایتخت فرانسه؟", "پاریس"),
+    ("5+7؟", "12"),
+    ("10-3؟", "7"),
+    ("ماه چند تاست؟", "1"),
+]
+
+dare_list = [
+    "😂 یه ایموجی خنده بفرست",
+    "📢 یه سلام بلند بگو",
+    "😆 عدد 1 تا 10 انتخاب کن",
+    "🎤 یه کلمه انگلیسی بگو",
+    "🤡 خودتو توصیف کن",
+    "📸 یه چیز بامزه بنویس",
+    "🔥 بگو من خفنم 😎",
+    "🙈 یه جمله خجالت‌آور بگو",
+]
+
+truth_list = [
+    "💬 بزرگترین ترست چیه؟",
+    "💬 عاشق شدی تا حالا؟",
+    "💬 بهترین دوستت کیه؟",
+    "💬 دروغ گفتی امروز؟",
+    "💬 بزرگترین رازت چیه؟",
+    "💬 از چی بیشتر بدت میاد؟",
+    "💬 آخرین باری که گریه کردی کی بود؟",
+]
+
 # ---------------- SEND ----------------
 
 def send_message(chat_id, text, reply_to=None, keyboard=None):
@@ -31,9 +67,9 @@ def send_message(chat_id, text, reply_to=None, keyboard=None):
     except:
         pass
 
-# ---------------- MENU KEYBOARD ----------------
+# ---------------- MAIN MENU ----------------
 
-def game_menu():
+def main_menu():
 
     return {
         "inline_keyboard": [
@@ -50,17 +86,47 @@ def game_menu():
         ]
     }
 
-# ---------------- QUIZ ----------------
+# ---------------- RPS MENU ----------------
 
-quiz_questions = [
-    ("پایتخت ایران؟", "تهران"),
-    ("2+2؟", "4"),
-    ("آب چند درجه یخ می‌زند؟", "0"),
-]
+def rps_menu():
 
-# ---------------- LOOP ----------------
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "✊ سنگ", "callback_data": "rps_sang"},
+                {"text": "✋ کاغذ", "callback_data": "rps_kaghaz"},
+                {"text": "✌️ قیچی", "callback_data": "rps_ghichi"}
+            ]
+        ]
+    }
 
-print("🚀 GAME MENU BOT STARTED")
+# ---------------- TIC TAC TOE MENU ----------------
+
+def tic_menu():
+
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "1", "callback_data": "tic_1"},
+                {"text": "2", "callback_data": "tic_2"},
+                {"text": "3", "callback_data": "tic_3"}
+            ],
+            [
+                {"text": "4", "callback_data": "tic_4"},
+                {"text": "5", "callback_data": "tic_5"},
+                {"text": "6", "callback_data": "tic_6"}
+            ],
+            [
+                {"text": "7", "callback_data": "tic_7"},
+                {"text": "8", "callback_data": "tic_8"},
+                {"text": "9", "callback_data": "tic_9"}
+            ]
+        ]
+    }
+
+# ---------------- BOT ----------------
+
+print("🚀 GAME PRO BOT STARTED")
 
 while True:
 
@@ -76,36 +142,29 @@ while True:
 
             offset = update["update_id"] + 1
 
+            # ---------------- MESSAGE ----------------
+
             if "message" in update:
 
                 msg = update["message"]
-
                 chat_id = msg["chat"]["id"]
                 text = msg.get("text", "")
                 mid = msg.get("message_id")
 
-                # ---------------- START ----------------
-
                 if text == "/start":
-
-                    send_message(
-                        chat_id,
-                        "🎮 سلام!\n\nبرای شروع بازی بنویس: بازی",
-                        reply_to=mid
+                    send_message(chat_id,
+                        "🎮 سلام!\n\nبرای شروع بنویس: بازی",
+                        mid
                     )
-
-                # ---------------- GAME MENU ----------------
 
                 elif text == "بازی":
-
-                    send_message(
-                        chat_id,
-                        "🎮 یکی از بازی‌ها رو انتخاب کن:",
-                        reply_to=mid,
-                        keyboard=game_menu()
+                    send_message(chat_id,
+                        "🎮 بازی رو انتخاب کن:",
+                        mid,
+                        main_menu()
                     )
 
-                # ---------------- CALLBACK (BUTTONS) ----------------
+            # ---------------- CALLBACK ----------------
 
             if "callback_query" in update:
 
@@ -113,39 +172,28 @@ while True:
                 data = cb["data"]
                 chat_id = cb["message"]["chat"]["id"]
 
-                # -------- RPS --------
+                # ---------------- MENU ----------------
 
-                if data == "rps":
-
-                    games[chat_id] = {"type": "rps"}
-
-                    send_message(chat_id,
-                        "✊ یکی انتخاب کن:\nسنگ / کاغذ / قیچی"
-                    )
-
-                # -------- QUIZ --------
-
-                elif data == "quiz":
+                if data == "quiz":
 
                     q = random.choice(quiz_questions)
-
                     games[chat_id] = {"type": "quiz", "ans": q[1]}
 
                     send_message(chat_id, f"🧠 سوال:\n{q[0]}")
 
-                # -------- DARE --------
-
                 elif data == "dare":
 
-                    dares = [
-                        "😂 یه ایموجی بفرست",
-                        "📢 یه سلام بلند بگو",
-                        "😆 عدد 1 تا 10 انتخاب کن"
-                    ]
+                    send_message(chat_id,
+                        "🎯 جرئت و حقیقت:\n" +
+                        random.choice(dare_list + truth_list)
+                    )
 
-                    send_message(chat_id, "🎯 جرئت:\n" + random.choice(dares))
+                elif data == "rps":
 
-                # -------- TIC TAC TOE --------
+                    send_message(chat_id,
+                        "✊ یکی رو انتخاب کن:",
+                        keyboard=rps_menu()
+                    )
 
                 elif data == "tic":
 
@@ -153,20 +201,72 @@ while True:
                         "board": ["1","2","3","4","5","6","7","8","9"]
                     }
 
-                    b = games[chat_id]["board"]
+                    send_message(chat_id,
+                        "⭕ دوز شروع شد!\nیک خانه انتخاب کن:",
+                        keyboard=tic_menu()
+                    )
+
+                # ---------------- RPS ----------------
+
+                elif data.startswith("rps_"):
+
+                    bot = random.choice(["سنگ","کاغذ","قیچی"])
+                    user = data.split("_")[1]
+
+                    map_rps = {
+                        "sang": "سنگ",
+                        "kaghaz": "کاغذ",
+                        "ghichi": "قیچی"
+                    }
+
+                    user = map_rps[user]
+
+                    if user == bot:
+                        res = "مساوی 😐"
+                    elif (user=="سنگ" and bot=="قیچی") or \
+                         (user=="کاغذ" and bot=="سنگ") or \
+                         (user=="قیچی" and bot=="کاغذ"):
+                        res = "تو بردی 🎉"
+                    else:
+                        res = "باختی 😆"
+
+                    send_message(chat_id,
+                        f"✊ تو: {user}\n🤖 من: {bot}\n📊 {res}"
+                    )
+
+                # ---------------- TIC TAC TOE ----------------
+
+                elif data.startswith("tic_"):
+
+                    pos = int(data.split("_")[1]) - 1
+
+                    if chat_id not in games:
+                        send_message(chat_id, "❌ بازی شروع نشده")
+                        continue
+
+                    board = games[chat_id]["board"]
+
+                    if board[pos] in ["X","O"]:
+                        send_message(chat_id, "❌ این خونه پره")
+                        continue
+
+                    board[pos] = "X"
+
+                    bot_move = random.choice([i for i in range(9) if board[i] not in ["X","O"]])
+                    board[bot_move] = "O"
 
                     send_message(chat_id,
                         f"""
-⭕ دوز شروع شد:
+⭕ دوز:
 
-{b[0]} | {b[1]} | {b[2]}
-{b[3]} | {b[4]} | {b[5]}
-{b[6]} | {b[7]} | {b[8]}
+{board[0]} | {board[1]} | {board[2]}
+{board[3]} | {board[4]} | {board[5]}
+{board[6]} | {board[7]} | {board[8]}
+""",
+                        keyboard=tic_menu()
+                    )
 
-بگو شماره کجا بزنی
-""")
-
-            # ---------------- GAME ANSWERS ----------------
+            # ---------------- QUIZ ANSWER ----------------
 
             if "message" in update:
 
@@ -174,37 +274,14 @@ while True:
                 chat_id = msg["chat"]["id"]
                 text = msg.get("text","")
 
-                if chat_id in games:
+                if chat_id in games and games[chat_id]["type"] == "quiz":
 
-                    g = games[chat_id]
+                    if text == games[chat_id]["ans"]:
+                        send_message(chat_id, "🎉 درست!")
+                    else:
+                        send_message(chat_id, f"❌ غلط! جواب: {games[chat_id]['ans']}")
 
-                    # ---- RPS ----
-                    if g["type"] == "rps":
-
-                        bot = random.choice(["سنگ","کاغذ","قیچی"])
-
-                        if text == bot:
-                            res = "مساوی 😐"
-                        elif (text=="سنگ" and bot=="قیچی") or \
-                             (text=="کاغذ" and bot=="سنگ") or \
-                             (text=="قیچی" and bot=="کاغذ"):
-                            res = "تو بردی 🎉"
-                        else:
-                            res = "باختی 😆"
-
-                        send_message(chat_id, f"🤖 من: {bot}\n📊 {res}")
-
-                        games.pop(chat_id, None)
-
-                    # ---- QUIZ ----
-                    elif g["type"] == "quiz":
-
-                        if text == g["ans"]:
-                            send_message(chat_id, "🎉 درست!")
-                        else:
-                            send_message(chat_id, f"❌ غلط! جواب: {g['ans']}")
-
-                        games.pop(chat_id, None)
+                    games.pop(chat_id, None)
 
     except Exception as e:
         print("ERROR:", e)
