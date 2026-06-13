@@ -1,14 +1,12 @@
-from flask import Flask, request
 import requests
-import os
+import time
 
-app = Flask(__name__)
-
-TOKEN = "YOUR_BALE_BOT_TOKEN"
+TOKEN = "1597508244:loyNgb9a1cdwlgLxF9ln7sofuwhYOjFN7Xk"
 BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 
+offset = 0
 
-# ---------------- SEND MESSAGE ----------------
+
 def send_message(chat_id, text):
     try:
         requests.post(
@@ -23,46 +21,56 @@ def send_message(chat_id, text):
         print("SEND ERROR:", e)
 
 
-# ---------------- WEBHOOK ROUTE ----------------
-@app.route("/", methods=["POST"])
-def webhook():
+print("🚀 Bot Started")
 
-    update = request.json
-    print("UPDATE:", update)
+while True:
 
-    if not update:
-        return "ok"
+    try:
+        res = requests.post(
+            f"{BASE_URL}/getUpdates",
+            json={"offset": offset},
+            timeout=15
+        )
 
-    message = update.get("message")
-    if not message:
-        return "ok"
+        data = res.json()
 
-    chat_id = message["chat"]["id"]
-    text = message.get("text", "")
+        if not data.get("ok"):
+            time.sleep(1)
+            continue
 
-    print("USER:", text)
+        updates = data.get("result", [])
 
-    # ---------------- COMMANDS ----------------
-    if text == "/start":
-        send_message(chat_id, "🤖 ربات وبهوک فعال شد!")
+        for update in updates:
 
-    elif text == "سلام":
-        send_message(chat_id, "👋 سلام!")
+            update_id = update.get("update_id")
 
-    elif text == "خوبی":
-        send_message(chat_id, "🙂 خوبم مرسی")
+            # جلو بردن offset فقط یکبار
+            offset = update_id + 1
 
-    else:
-        send_message(chat_id, "❓ دستور ناشناخته")
+            message = update.get("message")
+            if not message:
+                continue
 
-    return "ok"
+            chat_id = message["chat"]["id"]
+            text = message.get("text", "")
 
+            print("USER:", text)
 
-# ---------------- START SERVER ----------------
-if __name__ == "__main__":
-    print("🚀 Webhook Bot Started")
+            # ---------------- COMMANDS ----------------
+            if text == "/start":
+                send_message(chat_id, "🤖 سلام! بات فعاله")
 
-    app.run(
-        host="0.0.0.0",
-        port=int(os.environ.get("PORT", 5000))
-    )
+            elif text == "سلام":
+                send_message(chat_id, "👋 سلام!")
+
+            elif text == "خوبی":
+                send_message(chat_id, "🙂 خوبم مرسی")
+
+            else:
+                send_message(chat_id, "❓ دستور ناشناخته")
+
+    except Exception as e:
+        print("LOOP ERROR:", e)
+        time.sleep(2)
+
+    time.sleep(1)
