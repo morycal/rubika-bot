@@ -1,31 +1,29 @@
 import requests
 import time
 import random
+import threading
 
-TOKEN = "1597508244:uHdj4lnrEAz6lENe0GQI6cUltRiW3ogrNeY"
+TOKEN = "YOUR_BALE_TOKEN"
 BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 
 offset = 0
 
-# ---------------- STATES ----------------
+# ---------------- GAME STATE ----------------
 
-queue = {}
+queue = []
 duels = {}
-games = {}
 
-# ---------------- DATA ----------------
+# ---------------- QUIZ BANK (بزرگ شده) ----------------
 
-quiz_questions = [
-    ("2+2؟", "4"),
-    ("پایتخت ایران؟", "تهران"),
-    ("5×5؟", "25"),
-    ("رنگ آسمان؟", "آبی"),
-    ("10-3؟", "7"),
-]
-
-dare_list = [
-    "😂 یه ایموجی بفرست",
-    "📢 یه جمله خفن بگو",
+quiz_bank = [
+    ("پایتخت ایران؟", ["تهران", "مشهد", "شیراز", "تبریز"], "تهران"),
+    ("2+2؟", ["3", "4", "5", "6"], "4"),
+    ("5×5؟", ["20", "25", "30", "15"], "25"),
+    ("پایتخت ترکیه؟", ["آنکارا", "استانبول", "ازمیر", "وان"], "آنکارا"),
+    ("رنگ آسمان؟", ["آبی", "قرمز", "سبز", "زرد"], "آبی"),
+    ("10-3؟", ["5", "6", "7", "8"], "7"),
+    ("پایتخت فرانسه؟", ["پاریس", "لیون", "مارسی", "نیس"], "پاریس"),
+    ("عدد اول کدام است؟", ["4", "6", "7", "9"], "7"),
 ]
 
 # ---------------- SEND ----------------
@@ -40,66 +38,131 @@ def send(chat_id, text, keyboard=None):
     except:
         pass
 
-# ---------------- MENU ----------------
+# ---------------- KEYBOARD ----------------
 
-def menu():
+def quiz_keyboard(options):
     return {
         "inline_keyboard": [
-            [
-                {"text": "✊ دوئل سنگ/کاغذ/قیچی", "callback_data": "rps"},
-                {"text": "🧠 دوئل کوئیز", "callback_data": "quiz"}
-            ],
-            [
-                {"text": "⭕ دوئل دوز", "callback_data": "tic"}
-            ]
+            [{"text": options[0], "callback_data": options[0]},
+             {"text": options[1], "callback_data": options[1]}],
+            [{"text": options[2], "callback_data": options[2]},
+             {"text": options[3], "callback_data": options[3]}],
         ]
     }
 
 # ---------------- MATCHMAKING ----------------
 
-def matchmake(chat_id, game_type):
-    if game_type not in queue:
-        queue[game_type] = []
+def matchmake(chat_id):
 
-    queue[game_type].append(chat_id)
+    queue.append(chat_id)
 
-    if len(queue[game_type]) < 2:
-        send(chat_id, "⏳ منتظر حریف...", None)
+    if len(queue) < 2:
+        send(chat_id, "⏳ منتظر حریف...")
         return None
 
-    p1 = queue[game_type].pop(0)
-    p2 = queue[game_type].pop(0)
+    p1 = queue.pop(0)
+    p2 = queue.pop(0)
 
-    duel_id = str(random.randint(1000, 9999))
+    duel_id = str(random.randint(1000,9999))
 
     duels[duel_id] = {
-        "type": game_type,
         "p1": p1,
         "p2": p2,
-        "turn": p1,
-        "score": {p1: 0, p2: 0},
-        "board": None
+        "score": {p1:0, p2:0},
+        "round": 0,
+        "current_q": None,
+        "answered": False
     }
 
-    send(p1, "⚔️ حریف پیدا شد! شروع!", None)
-    send(p2, "⚔️ حریف پیدا شد!", None)
+    send(p1, "⚔️ حریف پیدا شد! شروع شد!")
+    send(p2, "⚔️ حریف پیدا شد! شروع شد!")
+
+    start_round(duel_id)
 
     return duel_id
 
-# ---------------- MAIN LOOP ----------------
+# ---------------- ROUND SYSTEM ----------------
 
-print("🚀 DUEL BOT STARTED")
+def start_round(duel_id):
+
+    d = duels.get(duel_id)
+    if not d:
+        return
+
+    if d["round"] >= 10:
+        end_game(duel_id)
+        return
+
+    d["round"] += 1
+    d["answered"] = False
+
+    q = random.choice(quiz_bank)
+    d["current_q"] = q
+
+    text = f"""
+🧠 راند {d['round']}/10
+
+❓ {q[0]}
+
+⏳ 5 ثانیه وقت داری!
+"""
+
+    kb = quiz_keyboard(q[1])
+
+    send(d["p1"], text, kb)
+    send(d["p2"], text, kb)
+
+    # تایمر 5 ثانیه
+    threading.Timer(5, timeout_round, args=[duel_id]).start()
+
+# ---------------- TIMEOUT ----------------
+
+def timeout_round(duel_id):
+
+    d = duels.get(duel_id)
+    if not d:
+        return
+
+    start_round(duel_id)
+
+# ---------------- END GAME ----------------
+
+def end_game(duel_id):
+
+    d = duels[duel_id]
+
+    p1, p2 = d["p1"], d["p2"]
+
+    s1 = d["score"][p1]
+    s2 = d["score"][p2]
+
+    if s1 > s2:
+        res = f"🏆 بازیکن 1 برد!\n{p1}"
+    elif s2 > s1:
+        res = f"🏆 بازیکن 2 برد!\n{p2}"
+    else:
+        res = "🤝 مساوی شدید!"
+
+    send(p1, f"🎮 پایان بازی\n{s1} - {s2}\n{res}")
+    send(p2, f"🎮 پایان بازی\n{s1} - {s2}\n{res}")
+
+    del duels[duel_id]
+
+# ---------------- BOT LOOP ----------------
+
+print("🚀 QUIZ DUEL STARTED")
 
 while True:
 
     try:
-        updates = requests.post(
+
+        res = requests.post(
             f"{BASE_URL}/getUpdates",
             json={"offset": offset},
             timeout=15
         ).json()
 
-        for u in updates.get("result", []):
+        for u in res.get("result", []):
 
             offset = u["update_id"] + 1
 
@@ -110,13 +173,12 @@ while True:
                 msg = u["message"]
                 chat_id = msg["chat"]["id"]
                 text = msg.get("text","")
-                mid = msg.get("message_id")
 
                 if text == "/start":
-                    send(chat_id, "🎮 وارد منو شو:", menu())
+                    send(chat_id, "🎮 برای شروع دوئل بنویس: بازی")
 
                 elif text == "بازی":
-                    send(chat_id, "🎮 انتخاب کن:", menu())
+                    matchmake(chat_id)
 
             # ---------------- CALLBACK ----------------
 
@@ -126,119 +188,31 @@ while True:
                 data = cb["data"]
                 chat_id = cb["message"]["chat"]["id"]
 
-                # ---------------- QUIZ DUEL ----------------
-
-                if data == "quiz":
-
-                    duel_id = matchmake(chat_id, "quiz")
-
-                    if duel_id:
-                        q = random.choice(quiz_questions)
-                        duels[duel_id]["q"] = q[0]
-                        duels[duel_id]["ans"] = q[1]
-
-                        send(chat_id,
-                            f"🧠 سوال:\n{q[0]}\nبنویس جواب:"
-                        )
-
-                # ---------------- RPS DUEL ----------------
-
-                elif data == "rps":
-
-                    matchmake(chat_id, "rps")
-
-                    send(chat_id, "✊ بنویس: سنگ / کاغذ / قیچی")
-
-                # ---------------- TIC TAC TOE DUEL ----------------
-
-                elif data == "tic":
-
-                    duel_id = matchmake(chat_id, "tic")
-
-                    if duel_id:
-                        duels[duel_id]["board"] = ["1","2","3","4","5","6","7","8","9"]
-
-                        send(chat_id,
-                            "⭕ دوز شروع شد!\nبگو شماره خانه"
-                        )
-
-            # ---------------- GAME LOGIC ----------------
-
-            if "message" in u:
-
-                msg = u["message"]
-                chat_id = msg["chat"]["id"]
-                text = msg.get("text","")
-
-                for duel_id, d in list(duels.items()):
+                # پیدا کردن دوئل
+                for duel_id, d in duels.items():
 
                     if chat_id not in [d["p1"], d["p2"]]:
                         continue
 
-                    enemy = d["p2"] if chat_id == d["p1"] else d["p1"]
+                    if d["answered"]:
+                        continue
 
-                    # ---------------- QUIZ ----------------
-                    if d["type"] == "quiz":
+                    correct = d["current_q"][2]
 
-                        if text == d["ans"]:
-                            d["score"][chat_id] += 1
-                            send(chat_id, "🎉 درست!")
-                        else:
-                            send(chat_id, "❌ غلط!")
+                    if data == correct:
 
-                        send(enemy, f"📊 امتیاز:\nP1: {d['score'][d['p1']]} | P2: {d['score'][d['p2']]}")
+                        d["score"][chat_id] += 1
+                        d["answered"] = True
 
-                        del duels[duel_id]
+                        send(chat_id, "✅ درست!")
 
-                    # ---------------- RPS ----------------
-                    elif d["type"] == "rps":
+                        enemy = d["p1"] if chat_id == d["p2"] else d["p2"]
+                        send(enemy, "❌ حریف جواب درست داد!")
 
-                        bot = random.choice(["سنگ","کاغذ","قیچی"])
+                        start_round(duel_id)
 
-                        if text == bot:
-                            res = "مساوی"
-                        elif (text=="سنگ" and bot=="قیچی") or \
-                             (text=="کاغذ" and bot=="سنگ") or \
-                             (text=="قیچی" and bot=="کاغذ"):
-                            res = "بردی"
-                        else:
-                            res = "باختی"
-
-                        send(chat_id, f"🤖:{bot} → {res}")
-
-                        del duels[duel_id]
-
-                    # ---------------- TIC TAC TOE ----------------
-                    elif d["type"] == "tic":
-
-                        board = d["board"]
-
-                        try:
-                            pos = int(text) - 1
-                        except:
-                            continue
-
-                        if pos < 0 or pos > 8:
-                            continue
-
-                        if board[pos] in ["X","O"]:
-                            send(chat_id, "❌ پره")
-                            continue
-
-                        board[pos] = "X"
-
-                        bot_move = random.choice([i for i in range(9) if board[i] not in ["X","O"]])
-                        board[bot_move] = "O"
-
-                        send(chat_id,
-                            f"""
-⭕ دوز:
-
-{board[0]} | {board[1]} | {board[2]}
-{board[3]} | {board[4]} | {board[5]}
-{board[6]} | {board[7]} | {board[8]}
-"""
-                        )
+                    else:
+                        send(chat_id, "❌ غلط!")
 
     except Exception as e:
         print("ERROR:", e)
