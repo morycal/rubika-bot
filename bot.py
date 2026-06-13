@@ -2,7 +2,7 @@ import requests
 import time
 import threading
 
-TOKEN = "RUBIKA_TOKEN"
+TOKEN = "BHAIGC0STLXIYCAIAXJBCSIUWUMVZJSBINPELVZPBEADDHGMGIUYCONLCNXWXEEI"
 BASE_URL = f"https://botapi.rubika.ir/v3/{TOKEN}"
 
 offset = None
