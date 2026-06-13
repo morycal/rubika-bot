@@ -1,258 +1,210 @@
 import requests
 import time
 import random
-from datetime import datetime
 
 TOKEN = "1597508244:uHdj4lnrEAz6lENe0GQI6cUltRiW3ogrNeY"
 BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 
 offset = 0
 
-# ---------------- MMO DATA ----------------
+# ---------------- GAME STATE ----------------
 
-players = {}
-queue = []
-duels = {}
-guilds = {}
-boss = {"hp": 500}
-
-# ---------------- PLAYER ----------------
-
-def get_player(uid):
-    if uid not in players:
-        players[uid] = {
-            "xp": 0,
-            "gold": 100,
-            "inventory": [],
-            "guild": None
-        }
-    return players[uid]
+games = {}
 
 # ---------------- SEND ----------------
 
-def send(chat_id, text, reply_to=None):
-    payload = {"chat_id": chat_id, "text": text}
+def send_message(chat_id, text, reply_to=None, keyboard=None):
+
+    payload = {
+        "chat_id": chat_id,
+        "text": text
+    }
+
     if reply_to:
         payload["reply_to_message_id"] = reply_to
+
+    if keyboard:
+        payload["reply_markup"] = keyboard
 
     try:
         requests.post(f"{BASE_URL}/sendMessage", json=payload, timeout=10)
     except:
         pass
 
-print("🚀 MMO BOT STARTED")
+# ---------------- MENU KEYBOARD ----------------
+
+def game_menu():
+
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "🎯 جرئت و حقیقت", "callback_data": "dare"},
+                {"text": "🧠 کوئیز", "callback_data": "quiz"}
+            ],
+            [
+                {"text": "✊ سنگ کاغذ قیچی", "callback_data": "rps"}
+            ],
+            [
+                {"text": "⭕ دوز", "callback_data": "tic"}
+            ]
+        ]
+    }
+
+# ---------------- QUIZ ----------------
+
+quiz_questions = [
+    ("پایتخت ایران؟", "تهران"),
+    ("2+2؟", "4"),
+    ("آب چند درجه یخ می‌زند؟", "0"),
+]
 
 # ---------------- LOOP ----------------
+
+print("🚀 GAME MENU BOT STARTED")
 
 while True:
 
     try:
-        res = requests.post(
+
+        updates = requests.post(
             f"{BASE_URL}/getUpdates",
             json={"offset": offset},
             timeout=15
-        )
+        ).json()
 
-        data = res.json()
-        updates = data.get("result", [])
+        for update in updates.get("result", []):
 
-        for u in updates:
+            offset = update["update_id"] + 1
 
-            offset = u["update_id"] + 1
+            if "message" in update:
 
-            msg = u.get("message")
-            if not msg:
-                continue
+                msg = update["message"]
 
-            chat_id = msg["chat"]["id"]
-            text = msg.get("text", "").lower()
-            mid = msg.get("message_id")
+                chat_id = msg["chat"]["id"]
+                text = msg.get("text", "")
+                mid = msg.get("message_id")
 
-            player = get_player(chat_id)
+                # ---------------- START ----------------
 
-            print("USER:", text)
+                if text == "/start":
 
-            # ---------------- START ----------------
+                    send_message(
+                        chat_id,
+                        "🎮 سلام!\n\nبرای شروع بازی بنویس: بازی",
+                        reply_to=mid
+                    )
 
-            if text == "/start":
-                send(chat_id,
-                    "🎮 MMO BOT فعال شد!\n\n"
-                    "دوئل → PvP\n"
-                    "حمله → در PvP\n"
-                    "باس → حمله به باس جهانی\n"
-                    "کلن اسم → ساخت کلن\n"
-                    "کلن join اسم → ورود\n"
-                    "loot → آیتم\n"
-                    "inventory → وسایل\n"
-                    "پروفایل → مشخصات\n"
-                    "لیدربورد → رتبه‌ها",
-                    mid
-                )
+                # ---------------- GAME MENU ----------------
 
-            # ---------------- MATCHMAKING ----------------
+                elif text == "بازی":
 
-            elif text == "دوئل":
+                    send_message(
+                        chat_id,
+                        "🎮 یکی از بازی‌ها رو انتخاب کن:",
+                        reply_to=mid,
+                        keyboard=game_menu()
+                    )
 
-                if chat_id in queue:
-                    send(chat_id, "⏳ هنوز تو صفی...", mid)
-                else:
-                    queue.append(chat_id)
-                    send(chat_id, "⏳ وارد صف شدی...", mid)
+                # ---------------- CALLBACK (BUTTONS) ----------------
 
-                if len(queue) >= 2:
+            if "callback_query" in update:
 
-                    p1 = queue.pop(0)
-                    p2 = queue.pop(0)
+                cb = update["callback_query"]
+                data = cb["data"]
+                chat_id = cb["message"]["chat"]["id"]
 
-                    duel_id = str(random.randint(1000, 9999))
+                # -------- RPS --------
 
-                    duels[duel_id] = {
-                        "p1": p1,
-                        "p2": p2,
-                        "turn": p1,
-                        "hp": {p1: 100, p2: 100}
+                if data == "rps":
+
+                    games[chat_id] = {"type": "rps"}
+
+                    send_message(chat_id,
+                        "✊ یکی انتخاب کن:\nسنگ / کاغذ / قیچی"
+                    )
+
+                # -------- QUIZ --------
+
+                elif data == "quiz":
+
+                    q = random.choice(quiz_questions)
+
+                    games[chat_id] = {"type": "quiz", "ans": q[1]}
+
+                    send_message(chat_id, f"🧠 سوال:\n{q[0]}")
+
+                # -------- DARE --------
+
+                elif data == "dare":
+
+                    dares = [
+                        "😂 یه ایموجی بفرست",
+                        "📢 یه سلام بلند بگو",
+                        "😆 عدد 1 تا 10 انتخاب کن"
+                    ]
+
+                    send_message(chat_id, "🎯 جرئت:\n" + random.choice(dares))
+
+                # -------- TIC TAC TOE --------
+
+                elif data == "tic":
+
+                    games[chat_id] = {
+                        "board": ["1","2","3","4","5","6","7","8","9"]
                     }
 
-                    send(p1, "⚔️ حریف پیدا شد! تو شروع کن", None)
-                    send(p2, "⚔️ حریف پیدا شد! صبر کن نوبتت بشه", None)
+                    b = games[chat_id]["board"]
 
-            # ---------------- ATTACK ----------------
+                    send_message(chat_id,
+                        f"""
+⭕ دوز شروع شد:
 
-            elif text == "حمله":
+{b[0]} | {b[1]} | {b[2]}
+{b[3]} | {b[4]} | {b[5]}
+{b[6]} | {b[7]} | {b[8]}
 
-                duel_id = None
+بگو شماره کجا بزنی
+""")
 
-                for d, v in duels.items():
-                    if chat_id in [v["p1"], v["p2"]]:
-                        duel_id = d
-                        duel = v
-                        break
+            # ---------------- GAME ANSWERS ----------------
 
-                if not duel_id:
-                    send(chat_id, "❌ داخل دوئل نیستی", mid)
-                    continue
+            if "message" in update:
 
-                if duel["turn"] != chat_id:
-                    send(chat_id, "⏳ نوبت تو نیست", mid)
-                    continue
+                msg = update["message"]
+                chat_id = msg["chat"]["id"]
+                text = msg.get("text","")
 
-                dmg = random.randint(10, 30)
+                if chat_id in games:
 
-                enemy = duel["p2"] if chat_id == duel["p1"] else duel["p1"]
+                    g = games[chat_id]
 
-                duel["hp"][enemy] -= dmg
+                    # ---- RPS ----
+                    if g["type"] == "rps":
 
-                player["xp"] += 5
-                player["gold"] += 10
+                        bot = random.choice(["سنگ","کاغذ","قیچی"])
 
-                send(chat_id, f"⚔️ دمیج: {dmg}", mid)
-                send(enemy, f"💥 خوردی: {dmg}", None)
+                        if text == bot:
+                            res = "مساوی 😐"
+                        elif (text=="سنگ" and bot=="قیچی") or \
+                             (text=="کاغذ" and bot=="سنگ") or \
+                             (text=="قیچی" and bot=="کاغذ"):
+                            res = "تو بردی 🎉"
+                        else:
+                            res = "باختی 😆"
 
-                if duel["hp"][enemy] <= 0:
+                        send_message(chat_id, f"🤖 من: {bot}\n📊 {res}")
 
-                    send(chat_id, "🏆 بردی!", mid)
-                    send(enemy, "💀 باختی!", None)
+                        games.pop(chat_id, None)
 
-                    player["xp"] += 20
-                    player["gold"] += 50
+                    # ---- QUIZ ----
+                    elif g["type"] == "quiz":
 
-                    del duels[duel_id]
+                        if text == g["ans"]:
+                            send_message(chat_id, "🎉 درست!")
+                        else:
+                            send_message(chat_id, f"❌ غلط! جواب: {g['ans']}")
 
-                else:
-                    duel["turn"] = enemy
-
-            # ---------------- BOSS ----------------
-
-            elif text == "باس":
-
-                dmg = random.randint(5, 25)
-                boss["hp"] -= dmg
-
-                player["xp"] += 10
-                player["gold"] += 15
-
-                send(chat_id,
-                    f"🔥 حمله کردی!\n💥 دمیج: {dmg}\n❤️ HP باس: {boss['hp']}",
-                    mid
-                )
-
-                if boss["hp"] <= 0:
-                    send(chat_id, "👑 باس شکست خورد!")
-                    boss["hp"] = 500
-
-            # ---------------- GUILD ----------------
-
-            elif text.startswith("کلن "):
-
-                parts = text.split()
-
-                if len(parts) == 2:
-
-                    name = parts[1]
-
-                    guilds[name] = {
-                        "members": [chat_id]
-                    }
-
-                    player["guild"] = name
-
-                    send(chat_id, f"🏰 کلن {name} ساخته شد!", mid)
-
-                elif len(parts) == 3 and parts[1] == "join":
-
-                    name = parts[2]
-
-                    if name in guilds:
-                        guilds[name]["members"].append(chat_id)
-                        player["guild"] = name
-                        send(chat_id, f"✅ وارد کلن {name} شدی!", mid)
-
-            # ---------------- INVENTORY ----------------
-
-            elif text == "loot":
-
-                item = random.choice(["شمشیر", "زره", "معجون", "سنگ جادویی"])
-
-                player["inventory"].append(item)
-
-                send(chat_id, f"🎁 گرفتی: {item}", mid)
-
-            elif text == "inventory":
-
-                send(chat_id,
-                    f"🎒 آیتم‌ها: {player['inventory']}\n💰 Gold: {player['gold']}",
-                    mid
-                )
-
-            # ---------------- PROFILE ----------------
-
-            elif text == "پروفایل":
-
-                level = player["xp"] // 50
-
-                send(chat_id,
-                    f"""
-👤 پروفایل
-⭐ Level: {level}
-💰 Gold: {player['gold']}
-🏰 Guild: {player['guild']}
-🎒 Items: {len(player['inventory'])}
-""",
-                    mid
-                )
-
-            # ---------------- LEADERBOARD ----------------
-
-            elif text == "لیدربورد":
-
-                board = sorted(players.items(), key=lambda x: x[1]["xp"], reverse=True)[:10]
-
-                msg = "🏆 لیدربورد:\n\n"
-
-                for i, (uid, p) in enumerate(board, 1):
-                    msg += f"{i}. {uid} → {p['xp']} XP\n"
-
-                send(chat_id, msg, mid)
+                        games.pop(chat_id, None)
 
     except Exception as e:
         print("ERROR:", e)
