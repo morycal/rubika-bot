@@ -9,38 +9,18 @@ if not TOKEN:
 
 BASE_URL = f"https://botapi.rubika.ir/v3/{TOKEN}"
 
-OFFSET_FILE = "offset.txt"
-
-
-def load_offset():
-    try:
-        with open(OFFSET_FILE, "r") as f:
-            return int(f.read().strip())
-    except:
-        return None
-
-
-def save_offset(offset):
-    try:
-        with open(OFFSET_FILE, "w") as f:
-            f.write(str(offset))
-    except Exception as e:
-        print("OFFSET SAVE ERROR:", e)
-
-
-offset = int(__import__("time").time())
+offset = None
+first_run = True
 
 
 async def send_message(session, chat_id, text):
     try:
-        payload = {
-            "chat_id": chat_id,
-            "text": text
-        }
-
         async with session.post(
             f"{BASE_URL}/sendMessage",
-            json=payload
+            json={
+                "chat_id": chat_id,
+                "text": text
+            }
         ) as response:
 
             result = await response.text()
@@ -48,7 +28,7 @@ async def send_message(session, chat_id, text):
             print("SEND STATUS:", response.status)
             print("SEND RESPONSE:", result)
 
-            # جلوگیری از اسپم
+            # جلوگیری از ریت‌لیمیت
             await asyncio.sleep(0.5)
 
     except Exception as e:
@@ -57,9 +37,10 @@ async def send_message(session, chat_id, text):
 
 async def handle_message(session, chat_id, text):
 
-    print("User:", text)
-
     text = text.strip()
+
+    print("CHAT ID:", chat_id)
+    print("User:", text)
 
     if text == "/start":
 
@@ -94,40 +75,10 @@ async def handle_message(session, chat_id, text):
         )
 
 
-async def process_update(session, update):
-
-    global offset
-
-    update_time = update.get("update_time")
-
-    if update_time:
-        offset = update_time
-        save_offset(offset)
-
-    if update.get("type") != "NewMessage":
-        return
-
-    msg = update.get("new_message", {})
-
-    text = msg.get("text", "")
-
-    chat_id = update.get("chat_id")
-
-    if not chat_id:
-        return
-
-    print("CHAT ID:", chat_id)
-
-    await handle_message(
-        session,
-        chat_id,
-        text
-    )
-
-
 async def get_updates(session):
 
     global offset
+    global first_run
 
     while True:
 
@@ -145,16 +96,60 @@ async def get_updates(session):
 
                 data = await response.json()
 
-            if data.get("status") == "OK":
+            if data.get("status") != "OK":
+                await asyncio.sleep(1)
+                continue
 
-                updates = data["data"]["updates"]
+            updates = data["data"]["updates"]
 
-                for update in updates:
+            # اولین اجرا: پیام‌های قدیمی را رد کن
+            if first_run:
 
-                    await process_update(
-                        session,
-                        update
+                if updates:
+
+                    offset = updates[-1]["update_time"]
+
+                    print(
+                        f"Skipped {len(updates)} old messages"
                     )
+
+                first_run = False
+
+                await asyncio.sleep(1)
+                continue
+
+            for update in updates:
+
+                offset = update.get(
+                    "update_time",
+                    offset
+                )
+
+                if update.get("type") != "NewMessage":
+                    continue
+
+                msg = update.get(
+                    "new_message",
+                    {}
+                )
+
+                text = msg.get(
+                    "text",
+                    ""
+                )
+
+                chat_id = update.get(
+                    "chat_id"
+                )
+
+                if not chat_id:
+                    continue
+
+                await handle_message(
+                    session,
+                    chat_id,
+                    text
+                )
 
         except Exception as e:
 
@@ -169,7 +164,13 @@ async def main():
 
     print("🚀 Async Bot Started")
 
-    async with aiohttp.ClientSession() as session:
+    timeout = aiohttp.ClientTimeout(
+        total=60
+    )
+
+    async with aiohttp.ClientSession(
+        timeout=timeout
+    ) as session:
 
         await get_updates(session)
 
