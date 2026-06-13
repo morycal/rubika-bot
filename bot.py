@@ -3,13 +3,14 @@ import time
 from datetime import datetime
 import random
 
-TOKEN = "1597508244:uHdj4lnrEAz6lENe0GQI6cUltRiW3ogrNeY"
+TOKEN = "YOUR_BALE_TOKEN"
 BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 
 offset = 0
 
 
-# ---------------- پاسخ‌های صمیمی ----------------
+# ---------------- FUN DATA ----------------
+
 greetings = [
     "سلام 😄 خوش اومدی!",
     "هلووو 👋 چه خبر؟",
@@ -38,8 +39,26 @@ goodbye = [
     "می‌بینمت 👋"
 ]
 
+jokes = [
+    "😂 چرا برنامه‌نویسا قهوه می‌خورن؟ چون بدونش باگ‌ها میان 😆",
+    "🤣 زندگی برنامه‌نویس = 1٪ کد، 99٪ چرا کار نکرد؟",
+    "😆 من یه باگ بودم… الان آپدیت شدم 😎",
+    "😂 Error: happiness not found!"
+]
 
-# ---------------- send message ----------------
+challenges = [
+    "🔥 چالش: 1 دقیقه هیچ چیزی نگو 😄",
+    "😂 چالش: به یه نفر پیام خنده‌دار بده",
+    "🤐 چالش: فقط ایموجی تا 5 دقیقه",
+    "📵 چالش: گوشی رو 2 دقیقه بذار کنار 😆",
+    "😎 چالش: یه تعریف اغراق‌آمیز از خودت بگو",
+    "🎤 چالش: یه آهنگ رو بلند بخون 😂",
+    "🧠 چالش: یه سوال سخت از خودت بپرس!"
+]
+
+
+# ---------------- SEND FUNCTION ----------------
+
 def send_message(chat_id, text, reply_to=None):
     try:
         payload = {
@@ -47,7 +66,6 @@ def send_message(chat_id, text, reply_to=None):
             "text": text
         }
 
-        # 👉 ریپلای واقعی
         if reply_to:
             payload["reply_to_message_id"] = reply_to
 
@@ -61,9 +79,10 @@ def send_message(chat_id, text, reply_to=None):
         print("SEND ERROR:", e)
 
 
-print("🚀 Friendly Reply Bot Started")
+print("🚀 Friendly Full Bot Started")
 
-# ---------------- main loop ----------------
+# ---------------- MAIN LOOP ----------------
+
 while True:
 
     try:
@@ -83,8 +102,7 @@ while True:
 
         for update in updates:
 
-            update_id = update.get("update_id")
-            offset = update_id + 1
+            offset = update.get("update_id") + 1
 
             message = update.get("message")
             if not message:
@@ -101,39 +119,42 @@ while True:
             if text == "/start":
                 send_message(
                     chat_id,
-                    "🤖 سلام رفیق!\n"
-                    "من یه بات صمیمی‌ام 😄\n\n"
-                    "📌 امتحان کن:\n"
-                    "سلام\n"
-                    "خوبی\n"
-                    "چیکار می‌کنی\n"
-                    "time\n"
-                    "بای",
+                    😂😂سلام با احمد کار داری؟؟  خوابه,
                     reply_to=message_id
                 )
 
             elif "سلام" in text:
                 send_message(chat_id, random.choice(greetings), reply_to=message_id)
 
-            elif "خوبی" in text or "how are you" in text:
+            elif "خوبی" in text:
                 send_message(chat_id, random.choice(how_are_you), reply_to=message_id)
 
-            elif "چیکار میکنی" in text or "چی کار میکنی" in text:
+            elif "چیکار" in text or "چی کار" in text:
                 send_message(chat_id, random.choice(chitchat), reply_to=message_id)
 
             elif "بای" in text or "خدافظ" in text:
                 send_message(chat_id, random.choice(goodbye), reply_to=message_id)
 
+            elif text == "جک":
+                send_message(chat_id, random.choice(jokes), reply_to=message_id)
+
             elif text == "زمان":
                 now = datetime.now().strftime("%Y-%m-%d ⏰ %H:%M:%S")
                 send_message(
                     chat_id,
-                    f"⏰ الان این ساعتشه:\n{now}\n"
-                    "وقتشه یه استراحت کوچیک بدی 😄",
+                    f"⏰ ساعت الان:\n{now}\n"
+                    "یه کم استراحت کن 😄",
                     reply_to=message_id
                 )
 
-           
+            elif "چالش" in text:
+                send_message(
+                    chat_id,
+                    "🎯 چالش جدید برات آماده شد!\n\n" + random.choice(challenges),
+                    reply_to=message_id
+                )
+
+            
 
     except Exception as e:
         print("ERROR:", e)
