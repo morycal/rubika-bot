@@ -3,7 +3,7 @@ import time
 from datetime import datetime
 import random
 
-TOKEN = "YOUR_BALE_TOKEN"
+TOKEN = "1597508244:uHdj4lnrEAz6lENe0GQI6cUltRiW3ogrNeY"
 BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 
 offset = 0
