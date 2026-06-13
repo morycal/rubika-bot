@@ -1,10 +1,13 @@
 import requests
 import time
 import sqlite3
+import random
+from datetime import datetime
+from reportlab.pdfgen import canvas
 
+# ---------------- CONFIG ----------------
 TOKEN = "1597508244:ka5UwETw7QiX-HTltkg5SMNv5MgMBDKC82c"
 BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
-
 ADMIN_ID = 586110315
 
 offset = 0
@@ -14,10 +17,21 @@ conn = sqlite3.connect("insurance.db", check_same_thread=False)
 cur = conn.cursor()
 
 cur.execute("""
+CREATE TABLE IF NOT EXISTS users (
+    chat_id INTEGER PRIMARY KEY,
+    name TEXT,
+    phone TEXT,
+    nid TEXT,
+    province TEXT,
+    address TEXT,
+    postal TEXT
+)
+""")
+
+cur.execute("""
 CREATE TABLE IF NOT EXISTS orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id INTEGER,
-    service TEXT,
     plan TEXT,
     price INTEGER,
     status TEXT
@@ -36,19 +50,56 @@ def send(chat_id, text, reply_markup=None):
         payload["reply_markup"] = reply_markup
     requests.post(f"{BASE_URL}/sendMessage", json=payload)
 
-# ---------------- ADMIN MENU ----------------
-def admin_menu():
+# ---------------- PDF ----------------
+def create_pdf(order_id, user, plan, price):
+    file_name = f"policy_{order_id}.pdf"
+
+    policy = f"INS-{random.randint(100000,999999)}"
+    date = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    c = canvas.Canvas(file_name)
+
+    c.setFont("Helvetica-Bold", 16)
+    c.drawString(180, 800, "🏢 بیمه‌نامه رسمی")
+
+    c.setFont("Helvetica", 12)
+    c.drawString(50, 750, f"شماره بیمه: {policy}")
+    c.drawString(50, 730, f"تاریخ: {date}")
+
+    c.drawString(50, 700, f"نام: {user[1]}")
+    c.drawString(50, 680, f"موبایل: {user[2]}")
+    c.drawString(50, 660, f"کد ملی: {user[3]}")
+    c.drawString(50, 640, f"استان: {user[4]}")
+    c.drawString(50, 620, f"آدرس: {user[5]}")
+    c.drawString(50, 600, f"کد پستی: {user[6]}")
+
+    c.drawString(50, 560, f"پلن: {plan}")
+    c.drawString(50, 540, f"قیمت: {price:,} تومان")
+
+    c.drawString(50, 500, "📌 این بیمه‌نامه به صورت دیجیتال صادر شده است.")
+
+    c.save()
+    return file_name
+
+# ---------------- SEND FILE ----------------
+def send_file(chat_id, path):
+    url = f"{BASE_URL}/sendDocument"
+    files = {"document": open(path, "rb")}
+    data = {"chat_id": chat_id}
+    requests.post(url, files=files, data=data)
+
+# ---------------- MENU ----------------
+def main_menu():
     return {
         "inline_keyboard": [
-            [{"text": "📊 آمار فروش", "callback_data": "admin_stats"}],
-            [{"text": "📦 آخرین سفارش‌ها", "callback_data": "admin_orders"}],
-            [{"text": "🔄 تغییر وضعیت سفارش", "callback_data": "admin_status"}],
-            [{"text": "📣 پیام به کاربر", "callback_data": "admin_msg"}]
+            [{"text": "🚗 بیمه خودرو", "callback_data": "car"}],
+            [{"text": "🏥 بیمه درمان", "callback_data": "health"}],
+            [{"text": "📦 سفارشات من", "callback_data": "orders"}]
         ]
     }
 
 # ---------------- BOT ----------------
-print("🚀 ADMIN PANEL STARTED")
+print("🚀 INSURANCE FULL SYSTEM STARTED")
 
 while True:
     try:
@@ -67,33 +118,10 @@ while True:
             if "message" in u:
                 msg = u["message"]
                 chat_id = msg["chat"]["id"]
-                text = msg.get("text", "")
+                text = msg.get("text", "").strip()
 
-                # ---------- ADMIN ENTRY ----------
-                if text == "/start" and chat_id == ADMIN_ID:
-                    send(chat_id, "👑 پنل مدیریت بیمه", admin_menu())
-
-                elif chat_id == ADMIN_ID and chat_id in state:
-
-                    # پیام ادمین به کاربر
-                    if state[chat_id].get("mode") == "send_msg":
-                        target = state[chat_id]["target"]
-
-                        send(target, f"📣 پیام از پشتیبانی:\n\n{text}")
-                        send(chat_id, "✅ پیام ارسال شد")
-                        state.pop(chat_id)
-
-                    # تغییر وضعیت سفارش
-                    elif state[chat_id].get("mode") == "change_status":
-                        order_id = state[chat_id]["order_id"]
-
-                        cur.execute("""
-                            UPDATE orders SET status=? WHERE id=?
-                        """, (text, order_id))
-                        conn.commit()
-
-                        send(chat_id, "✅ وضعیت بروزرسانی شد")
-                        state.pop(chat_id)
+                if text == "/start":
+                    send(chat_id, "🏢 سامانه بیمه فعال شد", main_menu())
 
             # ---------------- CALLBACK ----------------
             if "callback_query" in u:
@@ -101,42 +129,60 @@ while True:
                 chat_id = cb["message"]["chat"]["id"]
                 data = cb["data"]
 
-                if chat_id != ADMIN_ID:
-                    continue
+                # ---------------- BUY ----------------
+                if data in ["car", "health"]:
 
-                # ---------- STATS ----------
-                if data == "admin_stats":
-                    cur.execute("SELECT COUNT(*), SUM(price) FROM orders")
-                    res = cur.fetchone()
+                    plan = "خودرو" if data == "car" else "درمان"
+                    price = 500000 if data == "car" else 300000
+
+                    cur.execute("""
+                        INSERT INTO orders (user_id, plan, price, status)
+                        VALUES (?, ?, ?, ?)
+                    """, (chat_id, plan, price, "pending"))
+                    conn.commit()
+
+                    order_id = cur.lastrowid
+
+                    cur.execute("SELECT * FROM users WHERE chat_id=?", (chat_id,))
+                    user = cur.fetchone()
+
+                    if not user:
+                        send(chat_id, "❌ ابتدا اطلاعات کاربر را ثبت کنید")
+                        continue
 
                     send(chat_id,
-                         f"📊 آمار فروش\n\n"
-                         f"📦 سفارش‌ها: {res[0]}\n"
-                         f"💰 درآمد: {res[1] or 0}")
+                         f"✅ سفارش ثبت شد\n"
+                         f"📦 {plan}\n"
+                         f"💰 {price:,} تومان\n"
+                         f"⏳ در انتظار پرداخت")
 
-                # ---------- ORDERS ----------
-                elif data == "admin_orders":
-                    cur.execute("""
-                        SELECT id, user_id, service, plan, price, status
-                        FROM orders
-                        ORDER BY id DESC
-                        LIMIT 10
-                    """)
+                    send(ADMIN_ID, f"🆕 سفارش جدید #{order_id} از {chat_id}")
 
+                    # --- AUTO PDF (simulate paid) ---
+                    file = create_pdf(order_id, user, plan, price)
+
+                    send_file(chat_id, file)
+                    send_file(ADMIN_ID, file)
+
+                    cur.execute("UPDATE orders SET status='done' WHERE id=?", (order_id,))
+                    conn.commit()
+
+                # ---------------- ORDERS ----------------
+                elif data == "orders":
+                    cur.execute("SELECT id, plan, price, status FROM orders WHERE user_id=?", (chat_id,))
                     rows = cur.fetchall()
 
-                    msg = "📦 آخرین سفارش‌ها:\n\n"
-                    for r in rows:
-                        msg += f"#{r[0]} | {r[1]} | {r[2]} | {r[3]} | {r[4]} | {r[5]}\n"
+                    if not rows:
+                        send(chat_id, "📭 سفارشی ندارید")
+                    else:
+                        msg = "📦 سفارشات شما:\n\n"
+                        for r in rows:
+                            msg += f"#{r[0]} | {r[1]} | {r[2]:,} | {r[3]}\n"
 
-                    send(chat_id, msg)
+                        send(chat_id, msg)
 
-                # ---------- CHANGE STATUS ----------
-                elif data == "admin_status":
-                    state[chat_id] = {"mode": "change_status", "order_id": 1}
-                    send(chat_id, "🔢 شماره سفارش را وارد کنید:")
+    except Exception as e:
+        print("ERROR:", e)
+        time.sleep(2)
 
-                # ---------- SEND MESSAGE ----------
-                elif data == "admin_msg":
-                    state[chat_id] = {"mode": "send_msg"}
-                    send(chat_id, "🆔 آیدی کاربر + پیام را ارسال کنید:")
+    time.sleep(1)
