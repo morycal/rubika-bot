@@ -1,70 +1,84 @@
 import aiohttp
 import asyncio
 import os
+import time
 
 TOKEN = os.getenv("RUBIKA_TOKEN")
-
-if not TOKEN:
-    raise Exception("RUBIKA_TOKEN is not set!")
 
 BASE_URL = f"https://botapi.rubika.ir/v3/{TOKEN}"
 
 offset = None
 
+# ⛔ کنترل سرعت جهانی
+last_send_time = 0
 
-# ---------------- SEND MESSAGE ----------------
+
+# ---------------- SAFE SEND ----------------
 async def send_message(session, chat_id, text):
-    try:
-        payload = {
-            "chat_id": str(chat_id),
-            "text": str(text)
-        }
 
+    global last_send_time
+
+    # ⛔ حداقل فاصله بین پیام‌ها
+    now = time.time()
+    wait = 0.7 - (now - last_send_time)
+
+    if wait > 0:
+        await asyncio.sleep(wait)
+
+    payload = {
+        "chat_id": chat_id,
+        "text": text
+    }
+
+    try:
         async with session.post(
             f"{BASE_URL}/sendMessage",
             json=payload
         ) as res:
 
             data = await res.text()
+            print("SEND:", data)
 
-            print("SEND RESPONSE:", data)
+            last_send_time = time.time()
 
-            # جلوگیری از rate limit
-            await asyncio.sleep(0.4)
+            # اگر TOO_REQUESTS شد صبر بیشتر
+            if "TOO_REQUESTS" in data:
+                await asyncio.sleep(2)
+
+            return data
 
     except Exception as e:
         print("SEND ERROR:", e)
 
 
-# ---------------- HANDLE MESSAGE ----------------
+# ---------------- HANDLE ----------------
 async def handle_message(session, chat_id, text):
 
     text = text.strip()
     print("USER:", text)
-    print("CHAT:", chat_id)
 
     if text == "/start":
         await send_message(session, chat_id, "🤖 ربات روشن شد!")
 
     elif text == "سلام":
-        await send_message(session, chat_id, "👋 سلام! خوش اومدی")
+        await send_message(session, chat_id, "👋 سلام!")
 
     elif text == "کجایی":
-        await send_message(session, chat_id, "📡 آنلاین روی سرور")
+        await send_message(session, chat_id, "📡 آنلاین هستم")
 
     else:
         await send_message(session, chat_id, "❓ دستور ناشناخته")
 
 
-# ---------------- GET UPDATES ----------------
+# ---------------- LOOP ----------------
 async def get_updates(session):
 
     global offset
 
     while True:
         try:
-            payload = {}
 
+            payload = {}
             if offset:
                 payload["offset_id"] = offset
 
@@ -90,10 +104,9 @@ async def get_updates(session):
 
                 msg = update.get("new_message", {})
 
-                text = msg.get("text", "")
-
-                # ✅ فقط chat_id واقعی
                 chat_id = update.get("chat_id")
+
+                text = msg.get("text", "")
 
                 if not chat_id:
                     continue
@@ -107,13 +120,10 @@ async def get_updates(session):
         await asyncio.sleep(0.8)
 
 
-# ---------------- MAIN ----------------
 async def main():
-    print("🚀 Bot Started (Fixed Version)")
+    print("🚀 Stable Bot Started")
 
-    timeout = aiohttp.ClientTimeout(total=60)
-
-    async with aiohttp.ClientSession(timeout=timeout) as session:
+    async with aiohttp.ClientSession() as session:
         await get_updates(session)
 
 
