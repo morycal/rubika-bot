@@ -119,7 +119,7 @@ while True:
             if text == "/start":
                 send_message(
                     chat_id,
-                    😂😂سلام با احمد کار داری؟؟  خوابه,
+                    "😂😂سلام با احمد کار داری؟؟  خوابه\n",
                     reply_to=message_id
                 )
 
