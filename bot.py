@@ -114,15 +114,7 @@ while True:
 
             if text == "/start":
                 send_message(chat_id,
-                    "🤖 سلام!\n"
-                    "من بات بازی‌دار هستم 😎\n\n"
-                    "📌 دستورات:\n"
-                    "🎮 بازی rps\n"
-                    "🧠 quiz\n"
-                    "🏆 leaderboard\n"
-                    "🔥 level\n"
-                    "😂 joke\n"
-                    "⏰ time",
+                    "احمد خوابه به خودم بگو بهش میگم\n",
                     reply_to=message_id
                 )
 
