@@ -1,47 +1,52 @@
 import requests
 import time
 
-TOKEN = "1597508244:loyNgb9a1cdwlgLxF9ln7sofuwhYOjFN7Xk"
-
+TOKEN = "YOUR_BALE_BOT_TOKEN"
 BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 
 offset = 0
+seen = set()  # جلوگیری از تکرار
 
 
-# ---------------- SEND MESSAGE ----------------
 def send_message(chat_id, text):
     try:
-        url = f"{BASE_URL}/sendMessage"
-        payload = {
-            "chat_id": chat_id,
-            "text": text
-        }
-
-        res = requests.post(url, json=payload, timeout=10)
-        print("SEND:", res.text)
-
+        requests.post(
+            f"{BASE_URL}/sendMessage",
+            json={"chat_id": chat_id, "text": text},
+            timeout=10
+        )
     except Exception as e:
         print("SEND ERROR:", e)
 
 
-# ---------------- GET UPDATES ----------------
 print("🚀 Bale Bot Started")
 
 while True:
 
     try:
-        url = f"{BASE_URL}/getUpdates"
+        res = requests.post(
+            f"{BASE_URL}/getUpdates",
+            json={"offset": offset},
+            timeout=15
+        )
 
-        res = requests.post(url, json={"offset": offset})
         data = res.json()
 
         if not data.get("ok"):
             time.sleep(1)
             continue
 
-        for update in data.get("result", []):
+        updates = data.get("result", [])
 
-            offset = update["update_id"] + 1
+        for update in updates:
+
+            update_id = update["update_id"]
+
+            # ⛔ جلوگیری از دوبار پردازش
+            if update_id in seen:
+                continue
+
+            seen.add(update_id)
 
             message = update.get("message")
             if not message:
@@ -52,21 +57,17 @@ while True:
 
             print("USER:", text)
 
-            # ---------------- COMMANDS ----------------
             if text == "/start":
-                send_message(chat_id, "🤖 ربات بله فعال شد!")
+                send_message(chat_id, "🤖 ربات فعال شد!")
 
             elif text == "سلام":
-                send_message(chat_id, "علیک سلام")
-
-            elif text == "خوبی":
-                send_message(chat_id, "مگه تو دکتری؟")
-
-            elif text == "help":
-                send_message(chat_id, "📌 دستورات:\n/start\nسلام\nخوبی\nhelp")
+                send_message(chat_id, "👋 سلام!")
 
             else:
-                send_message(chat_id, "😂ما که نفهمیدیم چی گفت")
+                send_message(chat_id, "❓ دستور ناشناخته")
+
+            # ✔ اینجا offset را درست جلو ببر
+            offset = update_id + 1
 
     except Exception as e:
         print("LOOP ERROR:", e)
