@@ -1,117 +1,92 @@
 import aiohttp
 import asyncio
-from collections import deque
 
 TOKEN = "1597508244:loyNgb9a1cdwlgLxF9ln7sofuwhYOjFN7Xk"
 BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 
 offset = 0
 
-seen = deque(maxlen=5000)
-seen_set = set()
+# 🔥 قفل واقعی (نه set ساده)
+processing = set()
 
 
-def mark_seen(update_id):
-    seen.append(update_id)
-    seen_set.add(update_id)
-
-    if len(seen) == seen.maxlen:
-        old = seen.popleft()
-        seen_set.discard(old)
+def make_key(update):
+    msg = update.get("message", {})
+    msg_id = msg.get("message_id")
+    chat_id = msg.get("chat", {}).get("id")
+    return f"{chat_id}:{msg_id}"
 
 
-def is_seen(update_id):
-    return update_id in seen_set
-
-
-# ---------------- SEND MESSAGE (ASYNC) ----------------
 async def send_message(session, chat_id, text):
-    try:
-        async with session.post(
-            f"{BASE_URL}/sendMessage",
-            json={"chat_id": chat_id, "text": text},
-        ) as resp:
-            await resp.text()
-    except Exception as e:
-        print("SEND ERROR:", e)
+    async with session.post(
+        f"{BASE_URL}/sendMessage",
+        json={"chat_id": chat_id, "text": text}
+    ) as r:
+        await r.text()
 
 
-# ---------------- HANDLE UPDATE ----------------
-async def handle_update(session, update, offset_ref):
+async def handle_update(session, update):
     global offset
 
+    key = make_key(update)
+
+    # 🔥 جلوگیری قطعی duplicate
+    if key in processing:
+        return
+
+    processing.add(key)
+
+    msg = update.get("message")
+    if not msg:
+        return
+
+    chat_id = msg["chat"]["id"]
+    text = msg.get("text", "")
     update_id = update.get("update_id")
-
-    if is_seen(update_id):
-        return
-
-    mark_seen(update_id)
-    offset = update_id + 1
-
-    message = update.get("message")
-    if not message:
-        return
-
-    chat_id = message["chat"]["id"]
-    text = message.get("text", "")
 
     print("USER:", text)
 
+    # offset فقط یک بار
+    offset = max(offset, update_id + 1)
+
     if text == "/start":
-        await send_message(session, chat_id, "⚡ Async Bot Active")
+        await send_message(session, chat_id, "🤖 OK")
 
     elif text == "سلام":
-        await send_message(session, chat_id, "👋 سلام!")
-
-    elif text == "ping":
-        await send_message(session, chat_id, "pong 🏓")
+        await send_message(session, chat_id, "👋 سلام")
 
     else:
-        await send_message(session, chat_id, "❓ unknown")
+        await send_message(session, chat_id, "❓")
 
 
-# ---------------- GET UPDATES LOOP ----------------
-async def get_updates(session):
+async def loop():
     global offset
 
-    while True:
-        try:
-            async with session.post(
-                f"{BASE_URL}/getUpdates",
-                json={"offset": offset},
-                timeout=20
-            ) as resp:
-
-                data = await resp.json()
-
-                if not data.get("ok"):
-                    await asyncio.sleep(0.5)
-                    continue
-
-                updates = data.get("result", [])
-
-                tasks = []
-
-                for update in updates:
-                    tasks.append(handle_update(session, update, offset))
-
-                # 🔥 پردازش همزمان (10x سریع‌تر)
-                if tasks:
-                    await asyncio.gather(*tasks)
-
-        except Exception as e:
-            print("LOOP ERROR:", e)
-
-        await asyncio.sleep(0.3)  # ⚡ سریع‌تر از نسخه sync
-
-
-# ---------------- MAIN ----------------
-async def main():
-    print("🚀 Async Bale Bot Started")
-
     async with aiohttp.ClientSession() as session:
-        await get_updates(session)
+
+        while True:
+            try:
+                async with session.post(
+                    f"{BASE_URL}/getUpdates",
+                    json={"offset": offset},
+                    timeout=20
+                ) as r:
+
+                    data = await r.json()
+                    updates = data.get("result", [])
+
+                    tasks = []
+
+                    for u in updates:
+                        tasks.append(handle_update(session, u))
+
+                    if tasks:
+                        await asyncio.gather(*tasks)
+
+            except Exception as e:
+                print("ERR:", e)
+
+            await asyncio.sleep(0.4)
 
 
-if __name__ == "__main__":
-    asyncio.run(main())
+asyncio.run(loop())
