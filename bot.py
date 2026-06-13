@@ -150,7 +150,7 @@ while True:
             elif "چالش" in text:
                 send_message(
                     chat_id,
-                    "🎯 چالش جدید برات آماده شد!\n\n" + random.choice(challenges),
+                    "\n" + random.choice(challenges),
                     reply_to=message_id
                 )
 
