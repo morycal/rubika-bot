@@ -57,16 +57,16 @@ while True:
                 send_message(chat_id, "🤖 ربات بله فعال شد!")
 
             elif text == "سلام":
-                send_message(chat_id, "👋 سلام! خوبی؟")
+                send_message(chat_id, "علیک سلام")
 
             elif text == "خوبی":
-                send_message(chat_id, "🙂 خوبم مرسی")
+                send_message(chat_id, "مگه تو دکتری؟")
 
             elif text == "help":
                 send_message(chat_id, "📌 دستورات:\n/start\nسلام\nخوبی\nhelp")
 
             else:
-                send_message(chat_id, "❓ دستور ناشناخته")
+                send_message(chat_id, "😂ما که نفهمیدیم چی گفت")
 
     except Exception as e:
         print("LOOP ERROR:", e)
