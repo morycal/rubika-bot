@@ -5,12 +5,14 @@ import re
 TOKEN = "1597508244:ka5UwETw7QiX-HTltkg5SMNv5MgMBDKC82c"
 BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 
+ADMIN_ID = 586110315
+
 offset = 0
 
 # ---------------- MEMORY ----------------
 users = {}
 
-# ---------------- IRAN PROVINCES ----------------
+# ---------------- PROVINCES ----------------
 PROVINCES = [
     "تهران", "اصفهان", "فارس", "خراسان رضوی", "خراسان شمالی", "خراسان جنوبی",
     "آذربایجان شرقی", "آذربایجان غربی", "اردبیل", "البرز", "ایلام", "بوشهر",
@@ -27,13 +29,19 @@ def send(chat_id, text, reply_markup=None):
     requests.post(f"{BASE_URL}/sendMessage", json=payload)
 
 # ---------------- KEYBOARDS ----------------
+def start_keyboard():
+    return {
+        "inline_keyboard": [
+            [{"text": "📱 شروع ثبت‌نام بیمه", "callback_data": "start_form"}]
+        ]
+    }
+
 def province_keyboard():
     buttons = []
     row = []
 
-    for i, p in enumerate(PROVINCES):
+    for p in PROVINCES:
         row.append({"text": p, "callback_data": f"p_{p}"})
-
         if len(row) == 2:
             buttons.append(row)
             row = []
@@ -43,23 +51,31 @@ def province_keyboard():
 
     return {"inline_keyboard": buttons}
 
-
-def start_keyboard():
-    return {
-        "inline_keyboard": [
-            [{"text": "📱 شروع ثبت‌نام بیمه", "callback_data": "start_form"}]
-        ]
-    }
-
 # ---------------- VALIDATION ----------------
-def is_10_digit(value):
-    return bool(re.fullmatch(r"\d{10}", value))
+def is_10_digit(x):
+    return bool(re.fullmatch(r"\d{10}", x))
 
-def is_phone_valid(text):
-    return bool(re.fullmatch(r"09\d{9}", text))
+def is_phone(x):
+    return bool(re.fullmatch(r"09\d{9}", x))
+
+# ---------------- SEND TO ADMIN ----------------
+def send_admin_report(user_id, user):
+    msg = (
+        "📥 ثبت‌نام جدید بیمه\n\n"
+        f"👤 نام: {user.get('name')}\n"
+        f"📱 موبایل: {user.get('phone')}\n"
+        f"🧾 کد ملی: {user.get('nid')}\n"
+        f"🎂 تولد: {user.get('birth')}\n"
+        f"🏙 استان: {user.get('province')}\n"
+        f"📍 آدرس: {user.get('address')}\n"
+        f"📮 کدپستی: {user.get('postal')}\n"
+        f"🆔 UserID: {user_id}"
+    )
+
+    send(ADMIN_ID, msg)
 
 # ---------------- BOT ----------------
-print("🚀 INSURANCE PRO BOT STARTED")
+print("🚀 INSURANCE SYSTEM STARTED")
 
 while True:
     try:
@@ -69,8 +85,7 @@ while True:
             timeout=20
         )
 
-        data = res.json()
-        updates = data.get("result", [])
+        updates = res.json().get("result", [])
 
         for update in updates:
             offset = update["update_id"] + 1
@@ -88,23 +103,21 @@ while True:
 
                 # START
                 if text == "/start":
-                    user["step"] = "phone"
+                    user["step"] = "wait_phone"
 
-                    send(
-                        chat_id,
-                        "🏢 خوش آمدید به سامانه بیمه\n\n"
-                        "برای شروع ثبت‌نام روی دکمه زیر بزنید 👇",
-                        start_keyboard()
-                    )
+                    send(chat_id,
+                         "🏢 به سامانه بیمه خوش آمدید\n\n"
+                         "برای شروع روی دکمه زیر بزنید 👇",
+                         start_keyboard())
 
-                # PHONE INPUT (must be same user account)
+                # PHONE
                 elif user["step"] == "wait_phone":
-                    if not is_phone_valid(text):
-                        send(chat_id, "❌ شماره معتبر نیست (مثال: 09123456789)")
+                    if not is_phone(text):
+                        send(chat_id, "❌ شماره صحیح نیست (09xxxxxxxxx)")
                     else:
                         user["phone"] = text
                         user["step"] = "name"
-                        send(chat_id, "👤 نام و نام خانوادگی را وارد کنید:")
+                        send(chat_id, "👤 نام و نام خانوادگی:")
 
                 # NAME
                 elif user["step"] == "name":
@@ -112,32 +125,28 @@ while True:
                     user["step"] = "nid"
                     send(chat_id, "🧾 کد ملی (10 رقم):")
 
-                # NATIONAL ID
+                # NID
                 elif user["step"] == "nid":
                     if not is_10_digit(text):
-                        send(chat_id, "❌ کد ملی باید دقیقاً 10 رقم باشد")
+                        send(chat_id, "❌ کد ملی باید 10 رقم باشد")
                     else:
                         user["nid"] = text
                         user["step"] = "birth"
-                        send(chat_id, "🎂 تاریخ تولد (مثلاً 1380/01/01):")
+                        send(chat_id, "🎂 تاریخ تولد:")
 
                 # BIRTH
                 elif user["step"] == "birth":
                     user["birth"] = text
                     user["step"] = "province"
-
-                    send(chat_id,
-                         "🏙 استان خود را انتخاب کنید:",
-                         province_keyboard())
+                    send(chat_id, "🏙 استان خود را انتخاب کنید:", province_keyboard())
 
                 # ADDRESS
                 elif user["step"] == "address":
                     user["address"] = text
                     user["step"] = "postal"
-
                     send(chat_id, "📮 کد پستی (10 رقم):")
 
-                # POSTAL CODE
+                # POSTAL
                 elif user["step"] == "postal":
                     if not is_10_digit(text):
                         send(chat_id, "❌ کد پستی باید 10 رقم باشد")
@@ -146,20 +155,16 @@ while True:
                         user["step"] = "done"
 
                         send(chat_id,
-                             "🎉 ثبت‌نام بیمه تکمیل شد\n\n"
-                             f"👤 {user['name']}\n"
-                             f"📱 {user['phone']}\n"
-                             f"🧾 {user['nid']}\n"
-                             f"🎂 {user['birth']}\n"
-                             f"🏙 {user['province']}\n"
-                             f"📍 {user['address']}\n"
-                             f"📮 {user['postal']}")
+                             "🎉 ثبت‌نام کامل شد")
+
+                        # SEND TO ADMIN
+                        send_admin_report(chat_id, user)
 
             # ---------------- CALLBACK ----------------
             if "callback_query" in update:
                 cb = update["callback_query"]
                 chat_id = cb["message"]["chat"]["id"]
-                data_cb = cb["data"]
+                data = cb["data"]
 
                 if chat_id not in users:
                     users[chat_id] = {"step": "start"}
@@ -167,18 +172,17 @@ while True:
                 user = users[chat_id]
 
                 # START FORM
-                if data_cb == "start_form":
+                if data == "start_form":
                     user["step"] = "wait_phone"
-                    send(chat_id, "📱 شماره موبایل خود را وارد کنید (09xxxxxxxxx):")
+                    send(chat_id, "📱 شماره موبایل خود را وارد کنید:")
 
-                # PROVINCE SELECT
-                elif data_cb.startswith("p_"):
-                    province = data_cb.replace("p_", "")
-
+                # PROVINCE
+                elif data.startswith("p_"):
+                    province = data.replace("p_", "")
                     user["province"] = province
-                    user["step"] = "address"
 
-                    send(chat_id, "📍 آدرس دقیق خود را وارد کنید:")
+                    user["step"] = "address"
+                    send(chat_id, "📍 آدرس دقیق را وارد کنید:")
 
     except Exception as e:
         print("ERROR:", e)
