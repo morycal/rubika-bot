@@ -12,38 +12,28 @@ BASE_URL = f"https://botapi.rubika.ir/v3/{TOKEN}"
 offset = None
 
 
-# ---------------- SEND MESSAGE (RELIABLE) ----------------
+# ---------------- SEND MESSAGE ----------------
 async def send_message(session, chat_id, text):
+    try:
+        payload = {
+            "chat_id": str(chat_id),
+            "text": str(text)
+        }
 
-    payload = {
-        "chat_id": chat_id,
-        "peer_id": chat_id,   # fallback 1
-        "text": text
-    }
+        async with session.post(
+            f"{BASE_URL}/sendMessage",
+            json=payload
+        ) as res:
 
-    for attempt in range(3):  # retry system
-        try:
-            async with session.post(
-                f"{BASE_URL}/sendMessage",
-                json=payload
-            ) as res:
+            data = await res.text()
 
-                data = await res.text()
-                print(f"[SEND attempt {attempt+1}] {data}")
+            print("SEND RESPONSE:", data)
 
-                if "OK" in data:
-                    return True
+            # جلوگیری از rate limit
+            await asyncio.sleep(0.4)
 
-                # اگر TOO_REQUESTS شد صبر کن
-                if "TOO_REQUESTS" in data:
-                    await asyncio.sleep(1.5)
-
-        except Exception as e:
-            print("SEND ERROR:", e)
-
-        await asyncio.sleep(0.5)
-
-    return False
+    except Exception as e:
+        print("SEND ERROR:", e)
 
 
 # ---------------- HANDLE MESSAGE ----------------
@@ -51,21 +41,22 @@ async def handle_message(session, chat_id, text):
 
     text = text.strip()
     print("USER:", text)
+    print("CHAT:", chat_id)
 
     if text == "/start":
         await send_message(session, chat_id, "🤖 ربات روشن شد!")
 
     elif text == "سلام":
-        await send_message(session, chat_id, "👋 سلام!")
+        await send_message(session, chat_id, "👋 سلام! خوش اومدی")
 
-    elif text == "ping":
-        await send_message(session, chat_id, "pong 🟢")
+    elif text == "کجایی":
+        await send_message(session, chat_id, "📡 آنلاین روی سرور")
 
     else:
         await send_message(session, chat_id, "❓ دستور ناشناخته")
 
 
-# ---------------- UPDATE LOOP ----------------
+# ---------------- GET UPDATES ----------------
 async def get_updates(session):
 
     global offset
@@ -90,22 +81,19 @@ async def get_updates(session):
 
             updates = data["data"]["updates"]
 
-            for u in updates:
+            for update in updates:
 
-                offset = u.get("update_time", offset)
+                offset = update.get("update_time", offset)
 
-                if u.get("type") != "NewMessage":
+                if update.get("type") != "NewMessage":
                     continue
 
-                msg = u.get("new_message", {})
+                msg = update.get("new_message", {})
 
                 text = msg.get("text", "")
 
-                # 🔥 بهترین شناسه موجود
-                chat_id = (
-                    msg.get("sender_id")
-                    or u.get("chat_id")
-                )
+                # ✅ فقط chat_id واقعی
+                chat_id = update.get("chat_id")
 
                 if not chat_id:
                     continue
@@ -121,7 +109,7 @@ async def get_updates(session):
 
 # ---------------- MAIN ----------------
 async def main():
-    print("🚀 Reliable Bot Started")
+    print("🚀 Bot Started (Fixed Version)")
 
     timeout = aiohttp.ClientTimeout(total=60)
 
