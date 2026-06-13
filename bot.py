@@ -1,74 +1,107 @@
 import requests
 import time
+import sqlite3
+from reportlab.pdfgen import canvas
+from datetime import datetime
 
 TOKEN = "1597508244:ka5UwETw7QiX-HTltkg5SMNv5MgMBDKC82c"
 BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 
+ADMIN_ID = 123456789  # آیدی خودت
+
 offset = 0
 
+
+# ---------------- DATABASE ----------------
+
+conn = sqlite3.connect("shop.db", check_same_thread=False)
+cur = conn.cursor()
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS cart (
+    user_id INTEGER,
+    product TEXT,
+    price INTEGER,
+    qty INTEGER
+)
+""")
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS orders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    total INTEGER,
+    date TEXT
+)
+""")
+
+conn.commit()
+
+
+# ---------------- PRODUCTS ----------------
+
 products = [
-    {"id": 1, "name": "کفش ورزشی", "price": 250000},
+    {"id": 1, "name": "کفش", "price": 250000},
     {"id": 2, "name": "تی‌شرت", "price": 120000},
     {"id": 3, "name": "هدفون", "price": 500000},
 ]
 
-user_state = {}
-orders = []
+
+# ---------------- SEND ----------------
+
+def send(chat_id, text):
+    requests.post(
+        f"{BASE_URL}/sendMessage",
+        json={"chat_id": chat_id, "text": text}
+    )
 
 
-# ---------------- SEND MESSAGE ----------------
+# ---------------- PDF ----------------
 
-def send(chat_id, text, reply_markup=None, reply_to=None):
-    payload = {
-        "chat_id": chat_id,
-        "text": text,
-        "parse_mode": "HTML"
-    }
+def make_invoice(user_id):
+    file_name = f"invoice_{user_id}.pdf"
 
-    if reply_markup:
-        payload["reply_markup"] = reply_markup
+    c = canvas.Canvas(file_name)
+    c.drawString(100, 800, "INVOICE - SHOP BOT")
 
-    if reply_to:
-        payload["reply_to_message_id"] = reply_to
+    cur.execute("SELECT product, price, qty FROM cart WHERE user_id=?", (user_id,))
+    items = cur.fetchall()
 
-    requests.post(f"{BASE_URL}/sendMessage", json=payload)
+    y = 750
+    total = 0
 
+    for item in items:
+        name, price, qty = item
+        line_total = price * qty
+        total += line_total
+        c.drawString(100, y, f"{name} x{qty} = {line_total}")
+        y -= 30
 
-# ---------------- INLINE KEYBOARD ----------------
+    c.drawString(100, y-20, f"TOTAL: {total}")
 
-def product_keyboard():
-    buttons = []
+    c.save()
 
-    for p in products:
-        buttons.append([
-            {
-                "text": f"{p['name']} - {p['price']} تومان",
-                "callback_data": f"product_{p['id']}"
-            }
-        ])
-
-    return {"inline_keyboard": buttons}
+    return file_name, total
 
 
-def qty_keyboard(pid):
-    return {
-        "inline_keyboard": [
-            [
-                {"text": "1️⃣", "callback_data": f"qty_{pid}_1"},
-                {"text": "2️⃣", "callback_data": f"qty_{pid}_2"},
-                {"text": "3️⃣", "callback_data": f"qty_{pid}_3"}
-            ],
-            [
-                {"text": "5️⃣", "callback_data": f"qty_{pid}_5"},
-                {"text": "10️⃣", "callback_data": f"qty_{pid}_10"}
-            ]
-        ]
-    }
+# ---------------- CART ----------------
+
+def add_to_cart(user_id, product):
+    cur.execute(
+        "INSERT INTO cart VALUES (?,?,?,?)",
+        (user_id, product["name"], product["price"], 1)
+    )
+    conn.commit()
 
 
-# ---------------- MAIN ----------------
+def get_cart(user_id):
+    cur.execute("SELECT product, price, qty FROM cart WHERE user_id=?", (user_id,))
+    return cur.fetchall()
 
-print("🚀 PRO SHOP BOT STARTED")
+
+# ---------------- LOOP ----------------
+
+print("🚀 PRO SHOP V2 STARTED")
 
 while True:
     try:
@@ -92,75 +125,71 @@ while True:
                 msg_id = msg.get("message_id")
 
                 if text == "/start":
-                    send(
-                        chat_id,
-                        "🛍 به فروشگاه حرفه‌ای خوش اومدی!\n\n"
-                        "👇 یکی از محصولات رو انتخاب کن:",
-                        reply_markup=product_keyboard(),
-                        reply_to=msg_id
-                    )
+                    send(chat_id,
+                         "🛍 فروشگاه حرفه‌ای فعال شد\n"
+                         "دستورها:\n"
+                         "محصولات | سبد | پرداخت | ادمین")
 
-                elif text == "سفارشات":
-                    user_orders = [o for o in orders if o["chat_id"] == chat_id]
+                elif text == "محصولات":
+                    msg_txt = "🛍 محصولات:\n\n"
+                    for p in products:
+                        msg_txt += f"{p['id']}. {p['name']} - {p['price']}\n"
+                    send(chat_id, msg_txt)
 
-                    if not user_orders:
-                        send(chat_id, "❌ هیچ سفارشی نداری", msg_id)
+                elif text.isdigit():
+                    pid = int(text)
+                    product = next((p for p in products if p["id"] == pid), None)
+
+                    if product:
+                        add_to_cart(chat_id, product)
+                        send(chat_id, f"➕ اضافه شد: {product['name']}")
+
+                elif text == "سبد":
+                    items = get_cart(chat_id)
+
+                    if not items:
+                        send(chat_id, "سبد خالیه ❌")
                     else:
-                        msg_txt = "📋 سفارشات شما:\n\n"
-                        for o in user_orders:
-                            msg_txt += f"📦 {o['product']} | {o['qty']} عدد | {o['total']} تومان\n"
+                        msg_txt = "🛒 سبد خرید:\n\n"
+                        total = 0
 
-                        send(chat_id, msg_txt, msg_id)
+                        for i in items:
+                            name, price, qty = i
+                            total += price * qty
+                            msg_txt += f"{name} x{qty} = {price*qty}\n"
 
-            # ---------------- CALLBACK (BUTTON CLICK) ----------------
-            if "callback_query" in update:
-                cb = update["callback_query"]
-                chat_id = cb["message"]["chat"]["id"]
-                data_cb = cb["data"]
+                        msg_txt += f"\n💰 مجموع: {total}"
+                        send(chat_id, msg_txt)
 
-                # انتخاب محصول
-                if data_cb.startswith("product_"):
-                    pid = int(data_cb.split("_")[1])
+                elif text == "پرداخت":
 
-                    product = next(p for p in products if p["id"] == pid)
+                    file, total = make_invoice(chat_id)
 
-                    user_state[chat_id] = product
+                    send(chat_id,
+                         f"💳 پرداخت شبیه‌سازی شد\n"
+                         f"💰 مبلغ: {total}\n"
+                         f"📄 فاکتور ساخته شد")
 
-                    send(
-                        chat_id,
-                        f"📦 محصول انتخاب شد:\n\n"
-                        f"🔹 {product['name']}\n"
-                        f"💰 {product['price']} تومان\n\n"
-                        f"👇 حالا تعداد را انتخاب کن:",
-                        reply_markup=qty_keyboard(pid)
+                    send(ADMIN_ID,
+                         f"🆕 سفارش جدید\nUser: {chat_id}\nTotal: {total}")
+
+                    cur.execute(
+                        "INSERT INTO orders (user_id,total,date) VALUES (?,?,?)",
+                        (chat_id, total, str(datetime.now()))
                     )
+                    conn.commit()
 
-                # انتخاب تعداد
-                elif data_cb.startswith("qty_"):
-                    _, pid, qty = data_cb.split("_")
+                    cur.execute("DELETE FROM cart WHERE user_id=?", (chat_id,))
+                    conn.commit()
 
-                    pid = int(pid)
-                    qty = int(qty)
+                elif text == "ادمین" and chat_id == ADMIN_ID:
+                    cur.execute("SELECT COUNT(*), SUM(total) FROM orders")
+                    data = cur.fetchone()
 
-                    product = next(p for p in products if p["id"] == pid)
-
-                    total = product["price"] * qty
-
-                    orders.append({
-                        "chat_id": chat_id,
-                        "product": product["name"],
-                        "qty": qty,
-                        "total": total
-                    })
-
-                    send(
-                        chat_id,
-                        "✅ سفارش ثبت شد!\n\n"
-                        f"📦 محصول: {product['name']}\n"
-                        f"🔢 تعداد: {qty}\n"
-                        f"💰 مبلغ: {total} تومان\n\n"
-                        "🙏 ممنون از خریدت!"
-                    )
+                    send(chat_id,
+                         f"📊 آمار فروش:\n"
+                         f"🧾 سفارشات: {data[0]}\n"
+                         f"💰 درآمد: {data[1]}")
 
     except Exception as e:
         print("ERROR:", e)
