@@ -28,7 +28,7 @@ def save_offset(offset):
         print("OFFSET SAVE ERROR:", e)
 
 
-offset = load_offset()
+offset = int(__import__("time").time())
 
 
 async def send_message(session, chat_id, text):
