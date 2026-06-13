@@ -3,7 +3,7 @@ import time
 from datetime import datetime
 import random
 
-TOKEN = "1597508244:loyNgb9a1cdwlgLxF9ln7sofuwhYOjFN7Xk"
+TOKEN = "YOUR_BALE_TOKEN"
 BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 
 offset = 0
@@ -12,23 +12,23 @@ offset = 0
 # ---------------- پاسخ‌های صمیمی ----------------
 greetings = [
     "سلام 😄 خوش اومدی!",
-    "سلام رفیق 👋 چطوری؟",
-    "هلووو 😎 چه خبر؟",
-    "سلام! دلم برات تنگ شده بود 😆"
+    "هلووو 👋 چه خبر؟",
+    "سلام رفیق 😎 حالت چطوره؟",
+    "سلام! بالاخره اومدی 😆"
 ]
 
 how_are_you = [
     "خوبم مرسی 🙂 تو چطوری؟",
-    "عالی‌ام 😄 فقط یه کم باگ دارم مثل همه 😆",
-    "رو به راهم 👌 تو چی؟",
-    "زنده‌ام 😄 همین خودش کافیه!"
+    "عالی‌ام 😄 تو چی؟",
+    "رو به راهم 👌 تو چطور؟",
+    "زنده‌ام 😆 همین کافیه!"
 ]
 
-what_doing = [
-    "هیچی خاص 😄 دارم با تو چت می‌کنم",
-    "دارم فکر می‌کنم چرا کد من همیشه درست کار نمی‌کنه 😂",
-    "منتظرم تو چیزی بگی 😎",
-    "در حال لذت بردن از زندگی دیجیتال 🤖"
+chitchat = [
+    "دارم با تو چت می‌کنم 😄",
+    "هیچی خاص، منتظر پیام بعدی توام 😎",
+    "دارم فکر می‌کنم چرا دنیا اینقدر باگ داره 😂",
+    "در حال استراحت دیجیتالی 🤖"
 ]
 
 goodbye = [
@@ -39,19 +39,31 @@ goodbye = [
 ]
 
 
-def send_message(chat_id, text):
+# ---------------- send message ----------------
+def send_message(chat_id, text, reply_to=None):
     try:
+        payload = {
+            "chat_id": chat_id,
+            "text": text
+        }
+
+        # 👉 ریپلای واقعی
+        if reply_to:
+            payload["reply_to_message_id"] = reply_to
+
         requests.post(
             f"{BASE_URL}/sendMessage",
-            json={"chat_id": chat_id, "text": text},
+            json=payload,
             timeout=10
         )
+
     except Exception as e:
         print("SEND ERROR:", e)
 
 
-print("🚀 Friendly Bot Started")
+print("🚀 Friendly Reply Bot Started")
 
+# ---------------- main loop ----------------
 while True:
 
     try:
@@ -80,47 +92,48 @@ while True:
 
             chat_id = message["chat"]["id"]
             text = message.get("text", "").lower()
+            message_id = message.get("message_id")
 
             print("USER:", text)
 
-            # ---------------- HANDLING ----------------
+            # ---------------- COMMANDS ----------------
 
             if text == "/start":
-                send_message(chat_id,
+                send_message(
+                    chat_id,
                     "🤖 سلام رفیق!\n"
-                    "من یه بات ساده ولی صمیمی‌ام 😄\n\n"
-                    "📌 می‌تونی بپرسی:\n"
+                    "من یه بات صمیمی‌ام 😄\n\n"
+                    "📌 امتحان کن:\n"
                     "سلام\n"
                     "خوبی\n"
                     "چیکار می‌کنی\n"
-                    "بای\n"
-                    "time"
+                    "time\n"
+                    "بای",
+                    reply_to=message_id
                 )
 
-            elif "سلام" in text or "hello" in text:
-                send_message(chat_id, random.choice(greetings))
+            elif "سلام" in text:
+                send_message(chat_id, random.choice(greetings), reply_to=message_id)
 
             elif "خوبی" in text or "how are you" in text:
-                send_message(chat_id, random.choice(how_are_you))
+                send_message(chat_id, random.choice(how_are_you), reply_to=message_id)
 
             elif "چیکار میکنی" in text or "چی کار میکنی" in text:
-                send_message(chat_id, random.choice(what_doing))
+                send_message(chat_id, random.choice(chitchat), reply_to=message_id)
 
             elif "بای" in text or "خدافظ" in text:
-                send_message(chat_id, random.choice(goodbye))
+                send_message(chat_id, random.choice(goodbye), reply_to=message_id)
 
-            elif text == "تاریخ":
+            elif text == "زمان":
                 now = datetime.now().strftime("%Y-%m-%d ⏰ %H:%M:%S")
-                send_message(chat_id,
-                    f"⏰ ساعت الان:\n{now}\n"
-                    "وقتشه یه استراحت کوچیک بدی 😄"
+                send_message(
+                    chat_id,
+                    f"⏰ الان این ساعتشه:\n{now}\n"
+                    "وقتشه یه استراحت کوچیک بدی 😄",
+                    reply_to=message_id
                 )
 
-            else:
-                send_message(chat_id,
-                    "😅 راستش اینو درست نفهمیدم...\n"
-                    "ولی دارم یاد می‌گیرم 😎"
-                )
+           
 
     except Exception as e:
         print("ERROR:", e)
