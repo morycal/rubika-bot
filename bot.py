@@ -1,23 +1,31 @@
 import aiohttp
 import asyncio
 import os
+import time
 
 TOKEN = os.getenv("RUBIKA_TOKEN")
 BASE_URL = f"https://botapi.rubika.ir/v3/{TOKEN}"
 
 offset = None
 
-# 🧠 QUEUE (خیلی مهم)
 queue = asyncio.Queue()
 
-# ⛔ فقط 1 sender همزمان
-send_lock = asyncio.Lock()
+last_send = 0
 
 
-# ---------------- SAFE SEND ----------------
+# ---------------- SAFE SEND (GLOBAL LIMIT) ----------------
 async def send_message(session, chat_id, text):
 
-    async with send_lock:
+    global last_send
+
+    # ⛔ GLOBAL RATE LIMIT (خیلی مهم)
+    now = time.time()
+    wait = 1.3 - (now - last_send)
+
+    if wait > 0:
+        await asyncio.sleep(wait)
+
+    for attempt in range(3):
 
         try:
             async with session.post(
@@ -31,13 +39,18 @@ async def send_message(session, chat_id, text):
                 data = await res.text()
                 print("SEND:", data)
 
-                # ⛔ جلوگیری از flood
-                await asyncio.sleep(0.8)
+                last_send = time.time()
 
-                return data
+                if "TOO_REQUESTS" in data:
+                    await asyncio.sleep(2.5)
+                    continue
+
+                return
 
         except Exception as e:
             print("SEND ERROR:", e)
+
+        await asyncio.sleep(1)
 
 
 # ---------------- WORKER ----------------
@@ -48,16 +61,13 @@ async def worker(session):
         chat_id, text = await queue.get()
 
         if text == "/start":
-            await send_message(session, chat_id, "🤖 ربات روشن شد!")
+            await send_message(session, chat_id, "🤖 فعال شد!")
 
         elif text == "سلام":
             await send_message(session, chat_id, "👋 سلام!")
 
-        elif text == "کجایی":
-            await send_message(session, chat_id, "📡 آنلاین هستم")
-
         else:
-            await send_message(session, chat_id, "❓ دستور ناشناخته")
+            await send_message(session, chat_id, "❓ ناشناخته")
 
         queue.task_done()
 
@@ -66,8 +76,6 @@ async def worker(session):
 async def get_updates(session):
 
     global offset
-
-    seen = set()  # جلوگیری از duplicate
 
     while True:
         try:
@@ -80,26 +88,15 @@ async def get_updates(session):
                 f"{BASE_URL}/getUpdates",
                 json=payload
             ) as res:
-
                 data = await res.json()
 
             if data.get("status") != "OK":
                 await asyncio.sleep(1)
                 continue
 
-            updates = data["data"]["updates"]
+            for u in data["data"]["updates"]:
 
-            for u in updates:
-
-                uid = u.get("update_time")
-
-                # ⛔ جلوگیری از تکرار
-                if uid in seen:
-                    continue
-
-                seen.add(uid)
-
-                offset = uid
+                offset = u.get("update_time", offset)
 
                 if u.get("type") != "NewMessage":
                     continue
@@ -114,15 +111,14 @@ async def get_updates(session):
 
         except Exception as e:
             print("LOOP ERROR:", e)
-            await asyncio.sleep(2)
 
-        await asyncio.sleep(0.8)
+        await asyncio.sleep(1)
 
 
 # ---------------- MAIN ----------------
 async def main():
 
-    print("🚀 ULTRA STABLE BOT STARTED")
+    print("🚀 FINAL STABLE BOT STARTED")
 
     async with aiohttp.ClientSession() as session:
 
