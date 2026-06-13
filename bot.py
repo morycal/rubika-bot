@@ -1,89 +1,69 @@
 import requests
 import time
-import os
 
-TOKEN = os.getenv("RUBIKA_TOKEN")
-if not TOKEN:
-    raise Exception("RUBIKA_TOKEN is not set!")
+TOKEN = "1597508244:loyNgb9a1cdwlgLxF9ln7sofuwhYOjFN7Xk"
 
-BASE_URL = f"https://botapi.rubika.ir/v3/{TOKEN}"
+BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 
-offset = None
+offset = 0
 
 
 # ---------------- SEND MESSAGE ----------------
 def send_message(chat_id, text):
-
     try:
-        res = requests.post(
-            f"{BASE_URL}/sendMessage",
-            json={
-                "chat_id": chat_id,
-                "text": text
-            },
-            timeout=10
-        )
+        url = f"{BASE_URL}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": text
+        }
 
+        res = requests.post(url, json=payload, timeout=10)
         print("SEND:", res.text)
 
     except Exception as e:
         print("SEND ERROR:", e)
 
 
-# ---------------- MAIN LOOP ----------------
-print("🚀 Simple Bot Started")
+# ---------------- GET UPDATES ----------------
+print("🚀 Bale Bot Started")
 
 while True:
 
     try:
-        payload = {}
+        url = f"{BASE_URL}/getUpdates"
 
-        if offset:
-            payload["offset_id"] = offset
-
-        res = requests.post(
-            f"{BASE_URL}/getUpdates",
-            json=payload,
-            timeout=15
-        )
-
+        res = requests.post(url, json={"offset": offset})
         data = res.json()
 
-        if data.get("status") != "OK":
+        if not data.get("ok"):
             time.sleep(1)
             continue
 
-        updates = data["data"]["updates"]
+        for update in data.get("result", []):
 
-        for u in updates:
+            offset = update["update_id"] + 1
 
-            offset = u.get("update_time")
-
-            if u.get("type") != "NewMessage":
+            message = update.get("message")
+            if not message:
                 continue
 
-            msg = u.get("new_message", {})
-            text = msg.get("text", "")
-
-            chat_id = u.get("chat_id")
-
-            if not chat_id:
-                continue
+            chat_id = message["chat"]["id"]
+            text = message.get("text", "")
 
             print("USER:", text)
 
             # ---------------- COMMANDS ----------------
             if text == "/start":
-                send_message(chat_id, "🤖 سلام! بات فعال شد")
+                send_message(chat_id, "🤖 ربات بله فعال شد!")
 
             elif text == "سلام":
-                send_message(chat_id, "👋 سلام عزیز!")
+                send_message(chat_id, "👋 سلام! خوبی؟")
 
             elif text == "خوبی":
                 send_message(chat_id, "🙂 خوبم مرسی")
 
             elif text == "help":
-                send_message(chat_id, "📌 دستورات: /start - سلام - خوبی - help")
+                send_message(chat_id, "📌 دستورات:\n/start\nسلام\nخوبی\nhelp")
 
             else:
                 send_message(chat_id, "❓ دستور ناشناخته")
