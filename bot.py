@@ -1,7 +1,7 @@
 import requests
 import time
 
-TOKEN = "1597508244:loyNgb9a1cdwlgLxF9ln7sofuwhYOjFN7Xk"
+TOKEN = "YOUR_BALE_BOT_TOKEN"
 
 BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 
