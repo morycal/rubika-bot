@@ -1,7 +1,6 @@
 import requests
 import time
 import sqlite3
-import re
 
 TOKEN = "1597508244:ka5UwETw7QiX-HTltkg5SMNv5MgMBDKC82c"
 BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
@@ -10,36 +9,25 @@ ADMIN_ID = 586110315
 
 offset = 0
 
-# ---------------- DATABASE ----------------
+# ---------------- DB ----------------
 conn = sqlite3.connect("insurance.db", check_same_thread=False)
 cur = conn.cursor()
 
 cur.execute("""
-CREATE TABLE IF NOT EXISTS users (
-    chat_id INTEGER PRIMARY KEY,
-    phone TEXT,
-    name TEXT,
-    nid TEXT,
-    birth TEXT,
-    province TEXT,
-    address TEXT,
-    postal TEXT
-)
-""")
-
-cur.execute("""
 CREATE TABLE IF NOT EXISTS orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    chat_id INTEGER,
-    status TEXT,
-    date TEXT
+    user_id INTEGER,
+    service TEXT,
+    plan TEXT,
+    price INTEGER,
+    status TEXT
 )
 """)
 
 conn.commit()
 
-# ---------------- MEMORY ----------------
-steps = {}
+# ---------------- STATE ----------------
+state = {}
 
 # ---------------- SEND ----------------
 def send(chat_id, text, reply_markup=None):
@@ -48,57 +36,19 @@ def send(chat_id, text, reply_markup=None):
         payload["reply_markup"] = reply_markup
     requests.post(f"{BASE_URL}/sendMessage", json=payload)
 
-# ---------------- KEYBOARDS ----------------
-def main_menu():
+# ---------------- ADMIN MENU ----------------
+def admin_menu():
     return {
         "inline_keyboard": [
-            [{"text": "🛒 سفارش بیمه", "callback_data": "new_order"}],
-            [{"text": "📦 سبد خرید", "callback_data": "cart"}],
-            [{"text": "📑 پیگیری سفارش", "callback_data": "track"}],
-            [{"text": "👤 پروفایل", "callback_data": "profile"}]
+            [{"text": "📊 آمار فروش", "callback_data": "admin_stats"}],
+            [{"text": "📦 آخرین سفارش‌ها", "callback_data": "admin_orders"}],
+            [{"text": "🔄 تغییر وضعیت سفارش", "callback_data": "admin_status"}],
+            [{"text": "📣 پیام به کاربر", "callback_data": "admin_msg"}]
         ]
     }
-
-def start_keyboard():
-    return {
-        "inline_keyboard": [
-            [{"text": "🚀 شروع / ورود", "callback_data": "start"}]
-        ]
-    }
-
-# ---------------- CHECK USER ----------------
-def get_user(chat_id):
-    cur.execute("SELECT * FROM users WHERE chat_id=?", (chat_id,))
-    return cur.fetchone()
-
-# ---------------- SAVE USER ----------------
-def save_user(chat_id, data):
-    cur.execute("""
-    INSERT OR REPLACE INTO users VALUES (?,?,?,?,?,?,?,?)
-    """, (
-        chat_id,
-        data.get("phone"),
-        data.get("name"),
-        data.get("nid"),
-        data.get("birth"),
-        data.get("province"),
-        data.get("address"),
-        data.get("postal")
-    ))
-    conn.commit()
-
-# ---------------- VALIDATION ----------------
-def is_phone(x): return bool(re.fullmatch(r"09\d{9}", x))
-def is_10(x): return bool(re.fullmatch(r"\d{10}", x))
-
-# ---------------- MENU ----------------
-def show_menu(chat_id):
-    send(chat_id,
-         "🏢 پنل بیمه شما 👇",
-         main_menu())
 
 # ---------------- BOT ----------------
-print("🚀 INSURANCE CRM STARTED")
+print("🚀 ADMIN PANEL STARTED")
 
 while True:
     try:
@@ -110,130 +60,83 @@ while True:
 
         updates = res.json().get("result", [])
 
-        for update in updates:
-            offset = update["update_id"] + 1
+        for u in updates:
+            offset = u["update_id"] + 1
 
             # ---------------- MESSAGE ----------------
-            if "message" in update:
-                msg = update["message"]
+            if "message" in u:
+                msg = u["message"]
                 chat_id = msg["chat"]["id"]
-                text = msg.get("text", "").strip()
+                text = msg.get("text", "")
 
-                user = get_user(chat_id)
+                # ---------- ADMIN ENTRY ----------
+                if text == "/start" and chat_id == ADMIN_ID:
+                    send(chat_id, "👑 پنل مدیریت بیمه", admin_menu())
 
-                # ---------------- START ----------------
-                if text == "/start":
+                elif chat_id == ADMIN_ID and chat_id in state:
 
-                    if user:
-                        show_menu(chat_id)
-                    else:
-                        steps[chat_id] = {"step": "phone"}
+                    # پیام ادمین به کاربر
+                    if state[chat_id].get("mode") == "send_msg":
+                        target = state[chat_id]["target"]
 
-                        send(chat_id,
-                             "🏢 خوش آمدید به بیمه هوشمند\n\n"
-                             "📱 شماره موبایل خود را وارد کنید:")
+                        send(target, f"📣 پیام از پشتیبانی:\n\n{text}")
+                        send(chat_id, "✅ پیام ارسال شد")
+                        state.pop(chat_id)
 
-                # ---------------- REGISTRATION FLOW ----------------
-                elif chat_id in steps:
+                    # تغییر وضعیت سفارش
+                    elif state[chat_id].get("mode") == "change_status":
+                        order_id = state[chat_id]["order_id"]
 
-                    step = steps[chat_id]["step"]
+                        cur.execute("""
+                            UPDATE orders SET status=? WHERE id=?
+                        """, (text, order_id))
+                        conn.commit()
 
-                    # PHONE
-                    if step == "phone":
-                        if not is_phone(text):
-                            send(chat_id, "❌ شماره اشتباه است")
-                        else:
-                            steps[chat_id]["phone"] = text
-                            steps[chat_id]["step"] = "name"
-                            send(chat_id, "👤 نام و نام خانوادگی:")
-
-                    # NAME
-                    elif step == "name":
-                        steps[chat_id]["name"] = text
-                        steps[chat_id]["step"] = "nid"
-                        send(chat_id, "🧾 کد ملی (10 رقم):")
-
-                    # NID
-                    elif step == "nid":
-                        if not is_10(text):
-                            send(chat_id, "❌ کد ملی باید 10 رقم باشد")
-                        else:
-                            steps[chat_id]["nid"] = text
-                            steps[chat_id]["step"] = "birth"
-                            send(chat_id, "🎂 تاریخ تولد:")
-
-                    # BIRTH
-                    elif step == "birth":
-                        steps[chat_id]["birth"] = text
-                        steps[chat_id]["step"] = "province"
-                        send(chat_id, "🏙 استان خود را وارد کنید:")
-
-                    # PROVINCE
-                    elif step == "province":
-                        steps[chat_id]["province"] = text
-                        steps[chat_id]["step"] = "address"
-                        send(chat_id, "📍 آدرس کامل:")
-
-                    # ADDRESS
-                    elif step == "address":
-                        steps[chat_id]["address"] = text
-                        steps[chat_id]["step"] = "postal"
-                        send(chat_id, "📮 کد پستی (10 رقم):")
-
-                    # POSTAL
-                    elif step == "postal":
-                        if not is_10(text):
-                            send(chat_id, "❌ کد پستی اشتباه است")
-                        else:
-                            steps[chat_id]["postal"] = text
-
-                            save_user(chat_id, steps[chat_id])
-                            steps.pop(chat_id)
-
-                            send(chat_id,
-                                 "🎉 ثبت‌نام کامل شد")
-
-                            show_menu(chat_id)
+                        send(chat_id, "✅ وضعیت بروزرسانی شد")
+                        state.pop(chat_id)
 
             # ---------------- CALLBACK ----------------
-            if "callback_query" in update:
-                cb = update["callback_query"]
+            if "callback_query" in u:
+                cb = u["callback_query"]
                 chat_id = cb["message"]["chat"]["id"]
                 data = cb["data"]
 
-                user = get_user(chat_id)
+                if chat_id != ADMIN_ID:
+                    continue
 
-                # ---------------- START ----------------
-                if data == "start":
-                    if user:
-                        show_menu(chat_id)
-                    else:
-                        steps[chat_id] = {"step": "phone"}
-                        send(chat_id, "📱 شماره موبایل:")
+                # ---------- STATS ----------
+                if data == "admin_stats":
+                    cur.execute("SELECT COUNT(*), SUM(price) FROM orders")
+                    res = cur.fetchone()
 
-                # ---------------- MENU ----------------
-                elif data == "new_order":
-                    send(chat_id, "🛒 اینجا سفارش بیمه بزودی فعال می‌شود")
+                    send(chat_id,
+                         f"📊 آمار فروش\n\n"
+                         f"📦 سفارش‌ها: {res[0]}\n"
+                         f"💰 درآمد: {res[1] or 0}")
 
-                elif data == "cart":
-                    send(chat_id, "📦 سبد خرید شما خالی است")
+                # ---------- ORDERS ----------
+                elif data == "admin_orders":
+                    cur.execute("""
+                        SELECT id, user_id, service, plan, price, status
+                        FROM orders
+                        ORDER BY id DESC
+                        LIMIT 10
+                    """)
 
-                elif data == "track":
-                    send(chat_id, "📑 هیچ سفارشی ثبت نشده")
+                    rows = cur.fetchall()
 
-                elif data == "profile":
-                    if user:
-                        send(chat_id,
-                             f"👤 پروفایل:\n"
-                             f"📱 {user[1]}\n"
-                             f"🧾 {user[2]}\n"
-                             f"🏙 {user[5]}\n"
-                             f"📍 {user[6]}")
-                    else:
-                        send(chat_id, "❌ ابتدا ثبت‌نام کنید")
+                    msg = "📦 آخرین سفارش‌ها:\n\n"
+                    for r in rows:
+                        msg += f"#{r[0]} | {r[1]} | {r[2]} | {r[3]} | {r[4]} | {r[5]}\n"
 
-    except Exception as e:
-        print("ERROR:", e)
-        time.sleep(2)
+                    send(chat_id, msg)
 
-    time.sleep(1)
+                # ---------- CHANGE STATUS ----------
+                elif data == "admin_status":
+                    state[chat_id] = {"mode": "change_status", "order_id": 1}
+                    send(chat_id, "🔢 شماره سفارش را وارد کنید:")
+
+                # ---------- SEND MESSAGE ----------
+                elif data == "admin_msg":
+                    state[chat_id] = {"mode": "send_msg"}
+                    send(chat_id, "🆔 آیدی کاربر + پیام را ارسال کنید:")
