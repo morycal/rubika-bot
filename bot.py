@@ -6,7 +6,7 @@ from datetime import datetime
 TOKEN = "1597508244:ka5UwETw7QiX-HTltkg5SMNv5MgMBDKC82c"
 BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 
-ADMIN_ID = 123456789  # آیدی خودت
+ADMIN_ID = 586110315  # ← این را با chat_id خودت جایگزین کن
 
 offset = 0
 
@@ -41,52 +41,86 @@ products = [
     {"id": 1, "name": "کفش اسپرت", "price": 250000},
     {"id": 2, "name": "تی‌شرت", "price": 120000},
     {"id": 3, "name": "هدفون", "price": 500000},
-    {"id": 4, "name": "کوله‌پشتی", "price": 300000},
 ]
+
 
 # ---------------- SEND ----------------
 
-def send(chat_id, text):
-    try:
-        requests.post(
-            f"{BASE_URL}/sendMessage",
-            json={"chat_id": chat_id, "text": text}
-        )
-    except:
-        pass
+def send(chat_id, text, reply_markup=None):
+    payload = {
+        "chat_id": chat_id,
+        "text": text
+    }
+
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+
+    requests.post(f"{BASE_URL}/sendMessage", json=payload)
+
+
+# ---------------- KEYBOARDS ----------------
+
+def main_menu():
+    return {
+        "inline_keyboard": [
+            [{"text": "🛍 محصولات", "callback_data": "products"}],
+            [{"text": "🛒 سبد خرید", "callback_data": "cart"}],
+            [{"text": "💳 پرداخت", "callback_data": "pay"}],
+            [{"text": "📊 آمار", "callback_data": "admin"}]
+        ]
+    }
+
+
+def products_keyboard():
+    buttons = []
+    for p in products:
+        buttons.append([{
+            "text": f"{p['name']} - {p['price']} تومان",
+            "callback_data": f"add_{p['id']}"
+        }])
+    buttons.append([{"text": "🔙 بازگشت", "callback_data": "back"}])
+    return {"inline_keyboard": buttons}
+
+
+def qty_keyboard(pid):
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "1", "callback_data": f"qty_{pid}_1"},
+                {"text": "2", "callback_data": f"qty_{pid}_2"},
+                {"text": "3", "callback_data": f"qty_{pid}_3"}
+            ],
+            [
+                {"text": "5", "callback_data": f"qty_{pid}_5"},
+                {"text": "10", "callback_data": f"qty_{pid}_10"}
+            ]
+        ]
+    }
+
 
 # ---------------- CART ----------------
 
-def add_to_cart(user_id, product):
+def add_to_cart(user_id, product, qty=1):
     cur.execute(
         "INSERT INTO cart VALUES (?,?,?,?)",
-        (user_id, product["name"], product["price"], 1)
+        (user_id, product["name"], product["price"], qty)
     )
     conn.commit()
 
+
 def get_cart(user_id):
-    cur.execute(
-        "SELECT product, price, qty FROM cart WHERE user_id=?",
-        (user_id,)
-    )
+    cur.execute("SELECT product, price, qty FROM cart WHERE user_id=?", (user_id,))
     return cur.fetchall()
+
 
 def clear_cart(user_id):
     cur.execute("DELETE FROM cart WHERE user_id=?", (user_id,))
     conn.commit()
 
-# ---------------- PRODUCTS LIST ----------------
-
-def product_list():
-    msg = "🛍 محصولات:\n\n"
-    for p in products:
-        msg += f"{p['id']}. {p['name']} - {p['price']} تومان\n"
-    msg += "\n🔹 شماره محصول را ارسال کن"
-    return msg
 
 # ---------------- LOOP ----------------
 
-print("🚀 LIGHT SHOP BOT STARTED")
+print("🚀 INLINE SHOP BOT STARTED")
 
 while True:
     try:
@@ -102,96 +136,114 @@ while True:
         for update in updates:
             offset = update["update_id"] + 1
 
-            if "message" not in update:
-                continue
+            # ---------------- MESSAGE ----------------
+            if "message" in update:
+                msg = update["message"]
+                chat_id = msg["chat"]["id"]
+                text = msg.get("text", "")
 
-            msg = update["message"]
-            chat_id = msg["chat"]["id"]
-            text = msg.get("text", "").strip()
+                if text == "/start":
+                    send(
+                        chat_id,
+                        "👋 به فروشگاه حرفه‌ای خوش اومدی!\n"
+                        "👇 یکی از گزینه‌ها رو انتخاب کن:",
+                        main_menu()
+                    )
 
-            # ---------------- START ----------------
-            if text == "/start":
-                send(chat_id,
-                     "👋 به فروشگاه حرفه‌ای خوش اومدی!\n\n"
-                     "📌 دستورات:\n"
-                     "🛍 محصولات\n"
-                     "🛒 سبد\n"
-                     "💳 پرداخت\n"
-                     "📊 آمار")
+            # ---------------- CALLBACK ----------------
+            if "callback_query" in update:
+                cb = update["callback_query"]
+                chat_id = cb["message"]["chat"]["id"]
+                data_cb = cb["data"]
 
-            # ---------------- PRODUCTS ----------------
-            elif text == "محصولات":
-                send(chat_id, product_list())
+                # ---- MENU ----
+                if data_cb == "back":
+                    send(chat_id, "🏠 منو اصلی", main_menu())
 
-            # ---------------- ADD TO CART ----------------
-            elif text.isdigit():
-                pid = int(text)
-                product = next((p for p in products if p["id"] == pid), None)
+                elif data_cb == "products":
+                    send(chat_id, "🛍 لیست محصولات:", products_keyboard())
 
-                if product:
-                    add_to_cart(chat_id, product)
-                    send(chat_id, f"➕ اضافه شد: {product['name']}")
+                elif data_cb.startswith("add_"):
+                    pid = int(data_cb.split("_")[1])
+                    product = next(p for p in products if p["id"] == pid)
 
-            # ---------------- CART ----------------
-            elif text == "سبد":
-                items = get_cart(chat_id)
+                    send(
+                        chat_id,
+                        f"📦 {product['name']}\n💰 {product['price']}\n\nتعداد را انتخاب کن:",
+                        qty_keyboard(pid)
+                    )
 
-                if not items:
-                    send(chat_id, "🛒 سبدت خالیه ❌")
-                else:
-                    msg_txt = "🛒 سبد خرید:\n\n"
-                    total = 0
+                elif data_cb.startswith("qty_"):
+                    _, pid, qty = data_cb.split("_")
+                    pid = int(pid)
+                    qty = int(qty)
 
-                    for item in items:
-                        name, price, qty = item
-                        total += price * qty
-                        msg_txt += f"📦 {name} x{qty} = {price*qty}\n"
+                    product = next(p for p in products if p["id"] == pid)
 
-                    msg_txt += f"\n💰 مجموع: {total}"
-                    send(chat_id, msg_txt)
-
-            # ---------------- PAYMENT ----------------
-            elif text == "پرداخت":
-                items = get_cart(chat_id)
-
-                if not items:
-                    send(chat_id, "❌ سبد خرید خالی است")
-                else:
-                    total = 0
-                    invoice = "🧾 فاکتور شما:\n\n"
-
-                    for item in items:
-                        name, price, qty = item
-                        total += price * qty
-                        invoice += f"📦 {name} x{qty} = {price*qty}\n"
-
-                    invoice += f"\n💰 مبلغ قابل پرداخت: {total}"
+                    add_to_cart(chat_id, product, qty)
 
                     send(chat_id,
-                         "💳 پرداخت موفق (شبیه‌سازی شده)\n\n" + invoice)
+                         f"✅ اضافه شد:\n{product['name']} x{qty}",
+                         main_menu())
 
-                    # ارسال به ادمین
-                    send(ADMIN_ID,
-                         f"🆕 سفارش جدید\nUser: {chat_id}\nTotal: {total}")
+                # ---- CART ----
+                elif data_cb == "cart":
+                    items = get_cart(chat_id)
 
-                    # ذخیره سفارش
-                    cur.execute(
-                        "INSERT INTO orders (user_id,total,date) VALUES (?,?,?)",
-                        (chat_id, total, str(datetime.now()))
-                    )
-                    conn.commit()
+                    if not items:
+                        send(chat_id, "🛒 سبد خرید خالیه ❌", main_menu())
+                    else:
+                        msg = "🛒 سبد خرید:\n\n"
+                        total = 0
 
-                    clear_cart(chat_id)
+                        for i in items:
+                            name, price, qty = i
+                            total += price * qty
+                            msg += f"📦 {name} x{qty} = {price*qty}\n"
 
-            # ---------------- ADMIN ----------------
-            elif text == "آمار" and chat_id == ADMIN_ID:
-                cur.execute("SELECT COUNT(*), SUM(total) FROM orders")
-                data = cur.fetchone()
+                        msg += f"\n💰 مجموع: {total}"
+                        send(chat_id, msg, main_menu())
 
-                send(chat_id,
-                     f"📊 آمار فروش:\n"
-                     f"🧾 سفارشات: {data[0]}\n"
-                     f"💰 درآمد: {data[1]}")
+                # ---- PAYMENT ----
+                elif data_cb == "pay":
+                    items = get_cart(chat_id)
+
+                    if not items:
+                        send(chat_id, "❌ سبد خالیه", main_menu())
+                    else:
+                        total = 0
+                        for i in items:
+                            total += i[1] * i[2]
+
+                        send(chat_id,
+                             f"💳 پرداخت انجام شد (شبیه‌سازی)\n💰 مبلغ: {total}")
+
+                        send(ADMIN_ID,
+                             f"🆕 سفارش جدید\nUser: {chat_id}\nTotal: {total}")
+
+                        cur.execute(
+                            "INSERT INTO orders (user_id,total,date) VALUES (?,?,?)",
+                            (chat_id, total, str(datetime.now()))
+                        )
+                        conn.commit()
+
+                        clear_cart(chat_id)
+
+                        send(chat_id, "🎉 سفارش ثبت شد", main_menu())
+
+                # ---- ADMIN ----
+                elif data_cb == "admin":
+                    if chat_id == ADMIN_ID:
+                        cur.execute("SELECT COUNT(*), SUM(total) FROM orders")
+                        data = cur.fetchone()
+
+                        send(chat_id,
+                             f"📊 آمار فروش:\n"
+                             f"🧾 سفارشات: {data[0]}\n"
+                             f"💰 درآمد: {data[1]}",
+                             main_menu())
+                    else:
+                        send(chat_id, "⛔ دسترسی نداری")
 
     except Exception as e:
         print("ERROR:", e)
