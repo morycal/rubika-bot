@@ -1,6 +1,7 @@
 import aiohttp
 import asyncio
 import os
+import time
 
 TOKEN = os.getenv("RUBIKA_TOKEN")
 
@@ -13,88 +14,110 @@ offset = None
 first_run = True
 
 
-async def send_message(session, chat_id, text):
+# ---------------- SEND MESSAGE ----------------
+async def send_message(session, peer_id, text):
     try:
+        payload = {
+            "chat_id": peer_id,   # در روبیکا peer = sender_id
+            "text": text
+        }
+
         async with session.post(
             f"{BASE_URL}/sendMessage",
-            json={
-                "chat_id": chat_id,
-                "text": text
-            }
-        ) as response:
+            json=payload
+        ) as res:
 
-            result = await response.text()
+            data = await res.text()
 
-            print("SEND STATUS:", response.status)
-            print("SEND RESPONSE:", result)
+            print("SEND:", data)
 
-            # جلوگیری از ریت‌لیمیت
-            await asyncio.sleep(0.5)
+            # جلوگیری از rate limit
+            await asyncio.sleep(0.4)
 
     except Exception as e:
         print("SEND ERROR:", e)
 
 
-async def handle_message(session, chat_id, text):
+# ---------------- HANDLE MESSAGE ----------------
+async def handle_message(session, peer_id, text):
 
     text = text.strip()
-
-    print("CHAT ID:", chat_id)
-    print("User:", text)
+    print("USER:", text)
+    print("PEER:", peer_id)
 
     if text == "/start":
-
         await send_message(
             session,
-            chat_id,
-            "🤖 ربات فعال شد!\n\nسلام 👋"
+            peer_id,
+            "🤖 ربات فعال شد!\nسلام 👋"
         )
 
     elif text == "سلام":
-
         await send_message(
             session,
-            chat_id,
-            "👋 سلام! خوبی؟"
+            peer_id,
+            "👋 سلام! خوش اومدی"
         )
 
-    elif text == "کجایی؟؟":
-
+    elif text == "کجایی":
         await send_message(
             session,
-            chat_id,
-            "📡 روی Railway آنلاینم!"
+            peer_id,
+            "📡 آنلاین روی سرور"
         )
 
     else:
-
         await send_message(
             session,
-            chat_id,
+            peer_id,
             "❓ دستور ناشناخته"
         )
 
 
+# ---------------- PROCESS UPDATE ----------------
+async def process_update(session, update):
+
+    global offset
+
+    update_time = update.get("update_time")
+    if update_time:
+        offset = update_time
+
+    if update.get("type") != "NewMessage":
+        return
+
+    msg = update.get("new_message", {})
+
+    text = msg.get("text", "")
+
+    # 🔥 مهم‌ترین تغییر: peer = sender_id
+    peer_id = msg.get("sender_id")
+
+    if not peer_id:
+        return
+
+    await handle_message(session, peer_id, text)
+
+
+# ---------------- GET UPDATES ----------------
 async def get_updates(session):
 
     global offset
     global first_run
 
     while True:
-
         try:
 
             payload = {}
-
             if offset:
                 payload["offset_id"] = offset
 
             async with session.post(
                 f"{BASE_URL}/getUpdates",
                 json=payload
-            ) as response:
+            ) as res:
 
-                data = await response.json()
+                data = await res.json()
 
             if data.get("status") != "OK":
                 await asyncio.sleep(1)
@@ -102,76 +125,33 @@ async def get_updates(session):
 
             updates = data["data"]["updates"]
 
-            # اولین اجرا: پیام‌های قدیمی را رد کن
+            # 🚀 skip old messages
             if first_run:
-
                 if updates:
-
                     offset = updates[-1]["update_time"]
-
-                    print(
-                        f"Skipped {len(updates)} old messages"
-                    )
+                    print(f"Skipped {len(updates)} old updates")
 
                 first_run = False
-
                 await asyncio.sleep(1)
                 continue
 
             for update in updates:
-
-                offset = update.get(
-                    "update_time",
-                    offset
-                )
-
-                if update.get("type") != "NewMessage":
-                    continue
-
-                msg = update.get(
-                    "new_message",
-                    {}
-                )
-
-                text = msg.get(
-                    "text",
-                    ""
-                )
-
-                chat_id = update.get(
-                    "chat_id"
-                )
-
-                if not chat_id:
-                    continue
-
-                await handle_message(
-                    session,
-                    chat_id,
-                    text
-                )
+                await process_update(session, update)
 
         except Exception as e:
-
             print("LOOP ERROR:", e)
-
             await asyncio.sleep(3)
 
         await asyncio.sleep(1)
 
 
+# ---------------- MAIN ----------------
 async def main():
+    print("🚀 Peer-based Bot Started")
 
-    print("🚀 Async Bot Started")
+    timeout = aiohttp.ClientTimeout(total=60)
 
-    timeout = aiohttp.ClientTimeout(
-        total=60
-    )
-
-    async with aiohttp.ClientSession(
-        timeout=timeout
-    ) as session:
-
+    async with aiohttp.ClientSession(timeout=timeout) as session:
         await get_updates(session)
 
 
