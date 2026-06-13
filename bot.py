@@ -132,17 +132,17 @@ while True:
             elif "بای" in text:
                 send_message(chat_id, random.choice(goodbye), reply_to=message_id)
 
-            elif text == "joke":
+            elif text == "جک":
                 send_message(chat_id, random.choice(jokes), reply_to=message_id)
 
-            elif text == "time":
+            elif text == "زمان":
                 now = datetime.now().strftime("%Y-%m-%d ⏰ %H:%M:%S")
                 send_message(chat_id, f"⏰ {now}", reply_to=message_id)
 
 
             # ---------------- RPS GAME ----------------
 
-            elif text == "بازی rps":
+            elif text == "بازی1":
                 games[chat_id] = {"type": "rps"}
 
                 send_message(chat_id,
@@ -179,7 +179,7 @@ while True:
 
             # ---------------- QUIZ ----------------
 
-            elif text == "quiz":
+            elif text == "کوئیز":
 
                 q = random.choice([
                     ("پایتخت ایران؟", "تهران"),
@@ -207,7 +207,7 @@ while True:
 
             # ---------------- LEVEL ----------------
 
-            elif text == "level":
+            elif text == "لول":
                 user_xp = xp.get(chat_id, 0)
                 level = user_xp // 10
 
@@ -219,7 +219,7 @@ while True:
 
             # ---------------- LEADERBOARD ----------------
 
-            elif text == "leaderboard":
+            elif text == "امتیاز":
 
                 board = sorted(xp.items(), key=lambda x: x[1], reverse=True)[:5]
 
@@ -233,11 +233,7 @@ while True:
 
             # ---------------- UNKNOWN ----------------
 
-            else:
-                send_message(chat_id,
-                    "😅 نفهمیدم چی گفتی\nیه /start بزن 😎",
-                    reply_to=message_id
-                )
+           
 
     except Exception as e:
         print("ERROR:", e)
