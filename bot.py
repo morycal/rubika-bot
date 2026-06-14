@@ -1,9 +1,8 @@
 import requests
 import time
 import sqlite3
-import random
+import os
 from datetime import datetime
-from reportlab.pdfgen import canvas
 
 # ---------------- CONFIG ----------------
 TOKEN = "1597508244:ka5UwETw7QiX-HTltkg5SMNv5MgMBDKC82c"
@@ -11,6 +10,10 @@ BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 ADMIN_ID = 586110315
 
 offset = 0
+
+# ---------------- FILE STORAGE ----------------
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # ---------------- DB ----------------
 conn = sqlite3.connect("insurance.db", check_same_thread=False)
@@ -21,20 +24,18 @@ CREATE TABLE IF NOT EXISTS users (
     chat_id INTEGER PRIMARY KEY,
     name TEXT,
     phone TEXT,
-    nid TEXT,
-    province TEXT,
-    address TEXT,
-    postal TEXT
+    created_at TEXT
 )
 """)
 
 cur.execute("""
 CREATE TABLE IF NOT EXISTS orders (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER,
-    plan TEXT,
-    price INTEGER,
-    status TEXT
+    chat_id INTEGER,
+    type TEXT,
+    data TEXT,
+    status TEXT,
+    created_at TEXT
 )
 """)
 
@@ -45,61 +46,48 @@ state = {}
 
 # ---------------- SEND ----------------
 def send(chat_id, text, reply_markup=None):
-    payload = {"chat_id": chat_id, "text": text}
+    data = {"chat_id": chat_id, "text": text}
     if reply_markup:
-        payload["reply_markup"] = reply_markup
-    requests.post(f"{BASE_URL}/sendMessage", json=payload)
+        data["reply_markup"] = reply_markup
+    requests.post(f"{BASE_URL}/sendMessage", json=data)
 
-# ---------------- PDF ----------------
-def create_pdf(order_id, user, plan, price):
-    file_name = f"policy_{order_id}.pdf"
+# ---------------- DOWNLOAD FILE ----------------
+def save_file(file_id, file_name):
+    file_url = requests.get(f"{BASE_URL}/getFile?file_id={file_id}").json()
+    path = file_url["result"]["file_path"]
 
-    policy = f"INS-{random.randint(100000,999999)}"
-    date = datetime.now().strftime("%Y-%m-%d %H:%M")
+    file_data = requests.get(f"https://tapi.bale.ai/file/bot{TOKEN}/{path}").content
 
-    c = canvas.Canvas(file_name)
+    full_path = os.path.join(UPLOAD_DIR, file_name)
+    with open(full_path, "wb") as f:
+        f.write(file_data)
 
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(180, 800, "🏢 بیمه‌نامه رسمی")
+    return full_path
 
-    c.setFont("Helvetica", 12)
-    c.drawString(50, 750, f"شماره بیمه: {policy}")
-    c.drawString(50, 730, f"تاریخ: {date}")
-
-    c.drawString(50, 700, f"نام: {user[1]}")
-    c.drawString(50, 680, f"موبایل: {user[2]}")
-    c.drawString(50, 660, f"کد ملی: {user[3]}")
-    c.drawString(50, 640, f"استان: {user[4]}")
-    c.drawString(50, 620, f"آدرس: {user[5]}")
-    c.drawString(50, 600, f"کد پستی: {user[6]}")
-
-    c.drawString(50, 560, f"پلن: {plan}")
-    c.drawString(50, 540, f"قیمت: {price:,} تومان")
-
-    c.drawString(50, 500, "📌 این بیمه‌نامه به صورت دیجیتال صادر شده است.")
-
-    c.save()
-    return file_name
-
-# ---------------- SEND FILE ----------------
-def send_file(chat_id, path):
-    url = f"{BASE_URL}/sendDocument"
-    files = {"document": open(path, "rb")}
-    data = {"chat_id": chat_id}
-    requests.post(url, files=files, data=data)
-
-# ---------------- MENU ----------------
+# ---------------- KEYBOARD ----------------
 def main_menu():
     return {
         "inline_keyboard": [
-            [{"text": "🚗 بیمه خودرو", "callback_data": "car"}],
-            [{"text": "🏥 بیمه درمان", "callback_data": "health"}],
-            [{"text": "📦 سفارشات من", "callback_data": "orders"}]
+            [{"text": "📝 سفارش بیمه", "callback_data": "order"}],
+            [{"text": "📦 سفارشات", "callback_data": "orders"}],
+            [{"text": "👤 پروفایل", "callback_data": "profile"}]
+        ]
+    }
+
+def insurance_menu():
+    return {
+        "inline_keyboard": [
+            [{"text": "🚗 شخص ثالث خودرو", "callback_data": "third_car"}],
+            [{"text": "🏍 شخص ثالث موتور", "callback_data": "third_bike"}],
+            [{"text": "🚙 بدنه خودرو", "callback_data": "body_car"}],
+            [{"text": "💖 عمر", "callback_data": "life"}],
+            [{"text": "✈️ مسافرتی", "callback_data": "travel"}],
+            [{"text": "🔙 بازگشت", "callback_data": "back"}]
         ]
     }
 
 # ---------------- BOT ----------------
-print("🚀 INSURANCE FULL SYSTEM STARTED")
+print("🚀 Insurance Bot Started")
 
 while True:
     try:
@@ -114,72 +102,99 @@ while True:
         for u in updates:
             offset = u["update_id"] + 1
 
-            # ---------------- MESSAGE ----------------
+            # ================= MESSAGE =================
             if "message" in u:
                 msg = u["message"]
                 chat_id = msg["chat"]["id"]
-                text = msg.get("text", "").strip()
+                text = msg.get("text", "")
 
+                # ---- START ----
                 if text == "/start":
-                    send(chat_id, "🏢 سامانه بیمه فعال شد", main_menu())
+                    send(chat_id,
+                         "👋 به سامانه ازکی بیمه خوش آمدید\nلطفاً گزینه مورد نظر را انتخاب کنید:",
+                         main_menu())
 
-            # ---------------- CALLBACK ----------------
+                # ---- REGISTER STEP (SIMPLE) ----
+                if chat_id in state:
+                    step = state[chat_id].get("step")
+
+                    if step == "third_car_plate":
+                        state[chat_id]["plate"] = text
+                        state[chat_id]["step"] = "third_car_national"
+                        send(chat_id, "کد ملی را وارد کنید:")
+                        continue
+
+                    elif step == "third_car_national":
+                        state[chat_id]["national"] = text
+                        state[chat_id]["step"] = "third_car_brand"
+                        send(chat_id, "برند خودرو را وارد کنید:")
+                        continue
+
+                    elif step == "third_car_brand":
+                        state[chat_id]["brand"] = text
+                        state[chat_id]["step"] = "third_car_model"
+                        send(chat_id, "مدل خودرو را وارد کنید:")
+                        continue
+
+                    elif step == "third_car_model":
+                        state[chat_id]["model"] = text
+                        state[chat_id]["step"] = "third_car_address"
+                        send(chat_id, "آدرس را وارد کنید:")
+                        continue
+
+                    elif step == "third_car_address":
+                        state[chat_id]["address"] = text
+
+                        cur.execute("""
+                            INSERT INTO orders(chat_id, type, data, status, created_at)
+                            VALUES (?,?,?,?,?)
+                        """, (
+                            chat_id,
+                            "شخص ثالث خودرو",
+                            str(state[chat_id]),
+                            "pending",
+                            datetime.now().isoformat()
+                        ))
+                        conn.commit()
+
+                        order_id = cur.lastrowid
+
+                        send(chat_id, f"✅ سفارش ثبت شد #{order_id}", main_menu())
+                        send(ADMIN_ID, f"🆕 سفارش جدید #{order_id}\n{state[chat_id]}")
+
+                        state.pop(chat_id)
+                        continue
+
+            # ================= CALLBACK =================
             if "callback_query" in u:
                 cb = u["callback_query"]
                 chat_id = cb["message"]["chat"]["id"]
                 data = cb["data"]
 
-                # ---------------- BUY ----------------
-                if data in ["car", "health"]:
+                # ---- MAIN ----
+                if data == "back":
+                    send(chat_id, "🏠 منو اصلی", main_menu())
 
-                    plan = "خودرو" if data == "car" else "درمان"
-                    price = 500000 if data == "car" else 300000
+                elif data == "order":
+                    send(chat_id, "📝 نوع بیمه را انتخاب کنید:", insurance_menu())
 
-                    cur.execute("""
-                        INSERT INTO orders (user_id, plan, price, status)
-                        VALUES (?, ?, ?, ?)
-                    """, (chat_id, plan, price, "pending"))
-                    conn.commit()
+                # ---- THIRD CAR ----
+                elif data == "third_car":
+                    state[chat_id] = {"step": "third_car_plate"}
+                    send(chat_id, "🚗 پلاک خودرو را وارد کنید:")
 
-                    order_id = cur.lastrowid
+                elif data == "profile":
+                    send(chat_id, f"👤 پروفایل شما:\nID: {chat_id}")
 
-                    cur.execute("SELECT * FROM users WHERE chat_id=?", (chat_id,))
-                    user = cur.fetchone()
-
-                    if not user:
-                        send(chat_id, "❌ ابتدا اطلاعات کاربر را ثبت کنید")
-                        continue
-
-                    send(chat_id,
-                         f"✅ سفارش ثبت شد\n"
-                         f"📦 {plan}\n"
-                         f"💰 {price:,} تومان\n"
-                         f"⏳ در انتظار پرداخت")
-
-                    send(ADMIN_ID, f"🆕 سفارش جدید #{order_id} از {chat_id}")
-
-                    # --- AUTO PDF (simulate paid) ---
-                    file = create_pdf(order_id, user, plan, price)
-
-                    send_file(chat_id, file)
-                    send_file(ADMIN_ID, file)
-
-                    cur.execute("UPDATE orders SET status='done' WHERE id=?", (order_id,))
-                    conn.commit()
-
-                # ---------------- ORDERS ----------------
                 elif data == "orders":
-                    cur.execute("SELECT id, plan, price, status FROM orders WHERE user_id=?", (chat_id,))
+                    cur.execute("SELECT id, type, status FROM orders WHERE chat_id=?", (chat_id,))
                     rows = cur.fetchall()
 
-                    if not rows:
-                        send(chat_id, "📭 سفارشی ندارید")
-                    else:
-                        msg = "📦 سفارشات شما:\n\n"
-                        for r in rows:
-                            msg += f"#{r[0]} | {r[1]} | {r[2]:,} | {r[3]}\n"
+                    msg = "📦 سفارشات شما:\n\n"
+                    for r in rows:
+                        msg += f"#{r[0]} | {r[1]} | {r[2]}\n"
 
-                        send(chat_id, msg)
+                    send(chat_id, msg or "سفارشی ندارید")
 
     except Exception as e:
         print("ERROR:", e)
