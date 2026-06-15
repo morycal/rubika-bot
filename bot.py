@@ -1,142 +1,130 @@
-import logging
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler, CallbackQueryHandler, ContextTypes
+import os
+import requests
+from flask import Flask, request, jsonify
 
-# تنظیمات
-TOKEN = "1597508244:ka5UwETw7QiX-HTltkg5SMNv5MgMBDKC82c"
-ADMIN_ID = 586110315
+app = Flask(__name__)
 
-# مراحل مکالمه
-NAME, PHONE, INSURANCE_TYPE = range(3)
+BOT_TOKEN = os.environ.get("1597508244:ka5UwETw7QiX-HTltkg5SMNv5MgMBDKC82c")
 
-# دیتابیس موقت (در عمل از دیتابیس واقعی استفاده کن)
-users = {}
+# آیدی عددی ادمین (از بله)
+ADMIN_ID = os.environ.get("586110315")
 
-logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
-logger = logging.getLogger(__name__)
+# وضعیت کاربران
+user_state = {}
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    user_id = update.effective_user.id
-    
-    if user_id in users:
-        # کاربر قبلاً ثبت‌نام کرده
-        keyboard = [
-            [InlineKeyboardButton("🛡 سفارش بیمه", callback_data='order_insurance')],
-            [InlineKeyboardButton("📋 سفارشات من", callback_data='my_orders')],
-            [InlineKeyboardButton("👤 پروفایل", callback_data='profile')]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await update.message.reply_text(
-            "سلام! به ازکی بیمه خوش اومدی 🌟\n\n"
-            "چطور میتونم کمکت کنم؟",
-            reply_markup=reply_markup
-        )
-        return ConversationHandler.END
-    
-    await update.message.reply_text(
-        "سلام! به ربات ازکی بیمه خوش اومدی 🌟\n\n"
-        "لطفاً نام و نام خانوادگیت رو وارد کن:"
-    )
-    return NAME
+def send_message(chat_id, text):
+    url = f"https://tapi.bale.ai/bot{BOT_TOKEN}/sendMessage"
+    requests.post(url, json={
+        "chat_id": chat_id,
+        "text": text
+    })
 
-async def get_name(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    context.user_data['name'] = update.message.text
-    await update.message.reply_text("ممنون! حالا شماره تلفنت رو وارد کن:")
-    return PHONE
 
-async def get_phone(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    user_id = update.effective_user.id
-    users[user_id] = {
-        'name': context.user_data['name'],
-        'phone': update.message.text
-    }
-    
-    # ارسال اطلاعات به ادمین
-    await context.bot.send_message(
-        chat_id=ADMIN_ID,
-        text=f"کاربر جدید ثبت‌نام کرد:\nنام: {users[user_id]['name']}\nشماره: {users[user_id]['phone']}\nآیدی: {user_id}"
-    )
-    
-    keyboard = [
-        [InlineKeyboardButton("🛡 سفارش بیمه", callback_data='order_insurance')],
-        [InlineKeyboardButton("📋 سفارشات من", callback_data='my_orders')],
-        [InlineKeyboardButton("👤 پروفایل", callback_data='profile')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await update.message.reply_text(
-        "ثبت‌نام با موفقیت انجام شد! 🎉\n\n"
-        "از منوی زیر انتخاب کن:",
-        reply_markup=reply_markup
-    )
-    return ConversationHandler.END
+def send_to_admin(text):
+    url = f"https://tapi.bale.ai/bot{BOT_TOKEN}/sendMessage"
+    requests.post(url, json={
+        "chat_id": ADMIN_ID,
+        "text": text
+    })
 
-async def insurance_type_menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    await query.answer()
-    
-    keyboard = [
-        [InlineKeyboardButton("🚗 شخص ثالث خودرو", callback_data='third_party_car')],
-        [InlineKeyboardButton("🏍 شخص ثالث موتور", callback_data='third_party_motor')],
-        [InlineKeyboardButton("🚙 بدنه خودرو", callback_data='body_car')],
-        [InlineKeyboardButton("🏍 بدنه موتور", callback_data='body_motor')],
-        [InlineKeyboardButton("👤 عمر", callback_data='life')],
-        [InlineKeyboardButton("📱 موبایل", callback_data='mobile')],
-        [InlineKeyboardButton("✈️ مسافرتی", callback_data='travel')],
-        [InlineKeyboardButton("🏥 تکمیلی", callback_data='supplementary')],
-        [InlineKeyboardButton("🔥 آتش‌سوزی", callback_data='fire')],
-        [InlineKeyboardButton("⚔️ جنگ", callback_data='war')],
-        [InlineKeyboardButton("🏠 خانه", callback_data='home')],
-        [InlineKeyboardButton("🔙 برگشت", callback_data='back_to_main')]
-    ]
-    reply_markup = InlineKeyboardMarkup(keyboard)
-    await query.edit_message_text(
-        "لطفاً نوع بیمه مورد نظرت رو انتخاب کن:",
-        reply_markup=reply_markup
+
+def main_menu(chat_id):
+    send_message(chat_id,
+"""
+🏢 ثبت سفارش بیمه
+
+1️⃣ بیمه شخص ثالث
+2️⃣ بیمه بدنه
+3️⃣ بیمه عمر
+4️⃣ بیمه درمان
+
+لطفاً نوع بیمه را انتخاب کنید:
+"""
     )
 
-async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    await query.answer()
-    
-    if query.data == 'order_insurance':
-        await insurance_type_menu(update, context)
-    elif query.data == 'profile':
-        user_id = update.effective_user.id
-        if user_id in users:
-            await query.edit_message_text(
-                f"👤 پروفایل شما:\n\n"
-                f"نام: {users[user_id]['name']}\n"
-                f"شماره: {users[user_id]['phone']}\n"
-                f"آیدی: {user_id}"
-            )
-    elif query.data == 'back_to_main':
-        keyboard = [
-            [InlineKeyboardButton("🛡 سفارش بیمه", callback_data='order_insurance')],
-            [InlineKeyboardButton("📋 سفارشات من", callback_data='my_orders')],
-            [InlineKeyboardButton("👤 پروفایل", callback_data='profile')]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-        await query.edit_message_text(
-            "چطور میتونم کمکت کنم؟",
-            reply_markup=reply_markup
+
+@app.route("/", methods=["GET"])
+def home():
+    return "Bale Insurance Bot Running"
+
+
+@app.route("/", methods=["POST"])
+def webhook():
+
+    data = request.json
+
+    if "message" not in data:
+        return jsonify({"ok": True})
+
+    msg = data["message"]
+    chat_id = str(msg["chat"]["id"])
+    text = msg.get("text", "").strip()
+
+    # شروع
+    if text == "/start":
+        user_state[chat_id] = {"step": "insurance_type"}
+        main_menu(chat_id)
+
+    # انتخاب نوع بیمه
+    elif chat_id in user_state and user_state[chat_id]["step"] == "insurance_type":
+
+        user_state[chat_id]["insurance"] = text
+        user_state[chat_id]["step"] = "name"
+
+        send_message(chat_id, "نام و نام خانوادگی را وارد کنید:")
+
+    # نام
+    elif chat_id in user_state and user_state[chat_id]["step"] == "name":
+
+        user_state[chat_id]["name"] = text
+        user_state[chat_id]["step"] = "phone"
+
+        send_message(chat_id, "شماره تماس را وارد کنید:")
+
+    # شماره
+    elif chat_id in user_state and user_state[chat_id]["step"] == "phone":
+
+        user_state[chat_id]["phone"] = text
+        user_state[chat_id]["step"] = "desc"
+
+        send_message(chat_id, "توضیحات (در صورت نیاز) را وارد کنید:")
+
+    # توضیحات + ثبت نهایی
+    elif chat_id in user_state and user_state[chat_id]["step"] == "desc":
+
+        user_state[chat_id]["desc"] = text
+
+        data_user = user_state.pop(chat_id)
+
+        order_text = f"""
+📥 سفارش جدید بیمه
+
+👤 نام: {data_user['name']}
+📱 موبایل: {data_user['phone']}
+🏷 نوع بیمه: {data_user['insurance']}
+📝 توضیحات: {data_user['desc']}
+"""
+
+        # ارسال به ادمین
+        send_to_admin(order_text)
+
+        # پیام به کاربر
+        send_message(chat_id,
+"""
+✅ سفارش شما ثبت شد
+
+به زودی کارشناسان ما با شما تماس می‌گیرند 📞
+"""
         )
 
-def main():
-    app = Application.builder().token(TOKEN).build()
-    
-    conv_handler = ConversationHandler(
-        entry_points=[CommandHandler('start', start)],
-        states={
-            NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_name)],
-            PHONE: [MessageHandler(filters.TEXT & ~filters.COMMAND, get_phone)],
-        },
-        fallbacks=[]
-    )
-    
-    app.add_handler(conv_handler)
-    app.add_handler(CallbackQueryHandler(button_handler))
-    
-    app.run_polling()
+    else:
+        send_message(chat_id, "برای شروع /start را بزن")
 
-if __name__ == '__main__':
-    main()
+    return jsonify({"ok": True})
+
+
+if __name__ == "__main__":
+    app.run(
+        host="0.0.0.0",
+        port=int(os.environ.get("PORT", 5000))
+    )
