@@ -1,16 +1,14 @@
 import os
-import psycopg2
+import time
 import requests
-from flask import Flask, request, render_template, redirect, session
-
-app = Flask(__name__)
-app.secret_key = "CHANGE_ME"
+import psycopg2
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
-ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
-ADMIN_PASS = os.environ.get("ADMIN_PASS", "1234")
+offset = 0
+
+user_state = {}
 
 
 # ---------------- DB ----------------
@@ -26,12 +24,8 @@ def init_db():
     CREATE TABLE IF NOT EXISTS orders (
         id SERIAL PRIMARY KEY,
         user_id TEXT,
-        full_name TEXT,
-        phone TEXT,
-        insurance_type TEXT,
-        description TEXT,
-        status TEXT DEFAULT 'NEW',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        text TEXT,
+        status TEXT DEFAULT 'NEW'
     )
     """)
 
@@ -43,114 +37,76 @@ def init_db():
 init_db()
 
 
-# ---------------- BOT ----------------
+# ---------------- BOT API ----------------
 def send(chat_id, text):
     url = f"https://tapi.bale.ai/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, json={"chat_id": chat_id, "text": text})
+    requests.post(url, json={
+        "chat_id": chat_id,
+        "text": text
+    })
 
 
-@app.route("/", methods=["POST"])
-def webhook():
-
-    data = request.json
-    if "message" not in data:
-        return "ok"
-
-    msg = data["message"]
-    chat_id = str(msg["chat"]["id"])
-    text = msg.get("text", "")
-
-    # ثبت سریع سفارش (MVP هوشمند)
-    send(chat_id, "✅ سفارش شما ثبت شد. کارشناسان به زودی تماس می‌گیرند.")
-
-    conn = db()
-    cur = conn.cursor()
-
-    cur.execute("""
-        INSERT INTO orders(user_id, full_name, phone, insurance_type, description)
-        VALUES(%s,%s,%s,%s,%s)
-    """, (
-        chat_id,
-        "نامشخص",
-        "نامشخص",
-        "نامشخص",
-        text
-    ))
-
-    conn.commit()
-    cur.close()
-    conn.close()
-
-    return "ok"
+def get_updates(offset):
+    url = f"https://tapi.bale.ai/bot{BOT_TOKEN}/getUpdates"
+    r = requests.get(url, params={"offset": offset, "timeout": 10})
+    return r.json().get("result", [])
 
 
-# ---------------- ADMIN LOGIN ----------------
-@app.route("/admin", methods=["GET", "POST"])
-def login():
-
-    if request.method == "POST":
-        if request.form["username"] == ADMIN_USER and request.form["password"] == ADMIN_PASS:
-            session["admin"] = True
-            return redirect("/dashboard")
-
-    return render_template("login.html")
-
-
-# ---------------- DASHBOARD ----------------
-@app.route("/dashboard")
-def dashboard():
-
-    if not session.get("admin"):
-        return redirect("/admin")
-
-    conn = db()
-    cur = conn.cursor()
-
-    cur.execute("SELECT * FROM orders ORDER BY id DESC")
-    orders = cur.fetchall()
-
-    cur.execute("SELECT COUNT(*) FROM orders")
-    total = cur.fetchone()[0]
-
-    cur.execute("SELECT COUNT(*) FROM orders WHERE status='NEW'")
-    new = cur.fetchone()[0]
-
-    cur.execute("SELECT COUNT(*) FROM orders WHERE status='DONE'")
-    done = cur.fetchone()[0]
-
-    cur.close()
-    conn.close()
-
-    return render_template(
-        "dashboard.html",
-        orders=orders,
-        total=total,
-        new=new,
-        done=done
-    )
-
-
-# ---------------- UPDATE STATUS ----------------
-@app.route("/update/<int:oid>/<status>")
-def update(oid, status):
-
-    if not session.get("admin"):
-        return redirect("/admin")
-
+# ---------------- SAVE ORDER ----------------
+def save_order(user_id, text):
     conn = db()
     cur = conn.cursor()
 
     cur.execute(
-        "UPDATE orders SET status=%s WHERE id=%s",
-        (status, oid)
+        "INSERT INTO orders(user_id,text) VALUES(%s,%s)",
+        (user_id, text)
     )
 
     conn.commit()
     cur.close()
     conn.close()
 
-    return redirect("/dashboard")
+
+# ---------------- MAIN LOOP ----------------
+def run():
+    global offset
+
+    print("Bot started...")
+
+    while True:
+
+        updates = get_updates(offset)
+
+        for u in updates:
+
+            offset = u["update_id"] + 1
+
+            if "message" not in u:
+                continue
+
+            msg = u["message"]
+            chat_id = str(msg["chat"]["id"])
+            text = msg.get("text", "")
+
+            if text == "/start":
+                send(chat_id,
+"""
+🏢 CRM بیمه
+
+پیام بده برای ثبت سفارش:
+نام - شماره - نوع بیمه
+"""
+                )
+
+            else:
+                save_order(chat_id, text)
+
+                send(chat_id,
+"✅ سفارش ثبت شد. کارشناسان با شما تماس می‌گیرند."
+                )
+
+        time.sleep(1)
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 8080)))
+    run()
