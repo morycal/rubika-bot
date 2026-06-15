@@ -1,41 +1,30 @@
-<!DOCTYPE html>
-<html>
-<head>
-    <title>CRM Dashboard</title>
-</head>
-<body>
+<h2>📊 CRM Dashboard</h2>
 
-<h2>📊 CRM بیمه</h2>
-
-<p>کل سفارش‌ها: {{total}}</p>
-<p>جدید: {{new}}</p>
-<p>انجام شده: {{done}}</p>
+<p>🆕 New Orders: {{new}}</p>
+<p>📦 Total: {{total}}</p>
 
 <hr>
 
 <table border="1">
 <tr>
-    <th>ID</th>
-    <th>User</th>
-    <th>Text</th>
-    <th>Status</th>
-    <th>Actions</th>
+<th>ID</th>
+<th>User</th>
+<th>Text</th>
+<th>Status</th>
+<th>Action</th>
 </tr>
 
 {% for o in orders %}
 <tr>
-    <td>{{o[0]}}</td>
-    <td>{{o[1]}}</td>
-    <td>{{o[5]}}</td>
-    <td>{{o[6]}}</td>
-    <td>
-        <a href="/update/{{o[0]}}/CONTACTED">📞 تماس گرفته شد</a>
-        <a href="/update/{{o[0]}}/DONE">✅ انجام شد</a>
-    </td>
+<td>{{o[0]}}</td>
+<td>{{o[1]}}</td>
+<td>{{o[2]}}</td>
+<td>{{o[3]}}</td>
+<td>
+<a href="/update/{{o[0]}}/CONTACTED">📞</a>
+<a href="/update/{{o[0]}}/DONE">✅</a>
+</td>
 </tr>
 {% endfor %}
 
 </table>
-
-</body>
-</html>
