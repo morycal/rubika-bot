@@ -5,7 +5,7 @@ from music import search_music, get_stream
 from db import add_like
 from ai import recommend
 
-TOKEN = "YOUR_BALE_TOKEN"
+TOKEN = "1597508244:ka5UwETw7QiX-HTltkg5SMNv5MgMBDKC82c"
 BASE = f"https://tapi.bale.ai/bot{TOKEN}"
 
 last_update = 0
