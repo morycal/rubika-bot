@@ -1,5 +1,9 @@
 import subprocess
 
+def is_url(text):
+    return text.startswith("http://") or text.startswith("https://")
+
+
 def search_music(query):
     result = subprocess.getoutput(
         f'yt-dlp "ytsearch1:{query}" --get-title --get-url'
@@ -7,7 +11,6 @@ def search_music(query):
 
     if len(result) >= 2:
         return {
-            "type": "audio",
             "title": result[0],
             "url": result[1]
         }
@@ -15,20 +18,21 @@ def search_music(query):
     return None
 
 
-def download_video(query):
+def get_audio_from_url(url):
+    result = subprocess.getoutput(
+        f'yt-dlp -f bestaudio -g "{url}"'
+    )
+    return result.strip()
+
+
+def download_video_from_url(url):
     filename = "video.mp4"
 
     subprocess.call([
         "yt-dlp",
-        "-f", "mp4",
+        "-f", "bv+ba/b",
         "-o", filename,
-        f"ytsearch1:{query}"
+        url
     ])
 
     return filename
-
-
-def get_stream(url):
-    return subprocess.getoutput(
-        f'yt-dlp -f bestaudio -g "{url}"'
-    ).strip()
