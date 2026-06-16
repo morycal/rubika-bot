@@ -1,59 +1,197 @@
 import os
-import requests
+import re
 import time
-from db import conn
+import requests
+from yt_dlp import YoutubeDL
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+AUDD_TOKEN = os.getenv("AUDD_TOKEN")
 
 offset = 0
 
 
 def send(chat_id, text):
-    url = f"https://tapi.bale.ai/bot{BOT_TOKEN}/sendMessage"
-    requests.post(url, json={"chat_id": chat_id, "text": text})
+    requests.post(
+        f"https://tapi.bale.ai/bot{BOT_TOKEN}/sendMessage",
+        json={
+            "chat_id": chat_id,
+            "text": text
+        }
+    )
 
 
-def get_updates():
-    global offset
-    url = f"https://tapi.bale.ai/bot{BOT_TOKEN}/getUpdates"
-    r = requests.get(url, params={"offset": offset})
+def get_updates(offset):
+    r = requests.get(
+        f"https://tapi.bale.ai/bot{BOT_TOKEN}/getUpdates",
+        params={"offset": offset}
+    )
+
     return r.json().get("result", [])
 
 
-def save_order(user_id, text):
-    c = conn()
-    cur = c.cursor()
+def is_url(text):
+    return bool(re.search(r'https?://', text))
 
-    cur.execute(
-        "INSERT INTO orders(user_id,text,status) VALUES(%s,%s,'NEW')",
-        (user_id, text)
+
+def get_direct_audio_url(video_url):
+
+    ydl_opts = {
+        "quiet": True,
+        "skip_download": True,
+        "format": "bestaudio"
+    }
+
+    with YoutubeDL(ydl_opts) as ydl:
+
+        info = ydl.extract_info(video_url, download=False)
+
+        if "url" in info:
+            return info["url"]
+
+        formats = info.get("formats", [])
+
+        for f in reversed(formats):
+            if f.get("acodec") != "none":
+                return f["url"]
+
+    return None
+
+
+def recognize_song(audio_url):
+
+    r = requests.post(
+        "https://api.audd.io/",
+        data={
+            "api_token": AUDD_TOKEN,
+            "url": audio_url,
+            "return": "spotify,apple_music"
+        },
+        timeout=120
     )
 
-    c.commit()
-    cur.close()
-    c.close()
+    data = r.json()
+
+    if not data.get("result"):
+        return None
+
+    return data["result"]
+
+
+def format_result(song):
+
+    title = song.get("title", "نامشخص")
+    artist = song.get("artist", "نامشخص")
+    album = song.get("album", "نامشخص")
+
+    msg = f"""
+🎵 آهنگ پیدا شد
+
+🎶 {title}
+
+🎤 {artist}
+
+💿 {album}
+"""
+
+    spotify = song.get("spotify")
+
+    if spotify:
+        msg += f"\n🎧 Spotify:\n{spotify.get('external_urls',{}).get('spotify','')}"
+
+    apple = song.get("apple_music")
+
+    if apple:
+        msg += f"\n\n🍎 Apple Music:\n{apple.get('url','')}"
+
+    return msg
+
+
+print("Music Finder Bot Started")
 
 
 while True:
 
-    updates = get_updates()
+    try:
 
-    for u in updates:
+        updates = get_updates(offset)
 
-        offset = u["update_id"] + 1
+        for update in updates:
 
-        if "message" not in u:
-            continue
+            offset = update["update_id"] + 1
 
-        msg = u["message"]
-        chat_id = str(msg["chat"]["id"])
-        text = msg.get("text", "")
+            if "message" not in update:
+                continue
 
-        if text == "/start":
-            send(chat_id, "📦 سفارش بیمه را ارسال کنید")
+            msg = update["message"]
 
-        else:
-            save_order(chat_id, text)
-            send(chat_id, "✅ ثبت شد")
+            chat_id = msg["chat"]["id"]
 
-    time.sleep(1)
+            text = msg.get("text", "")
+
+            if text == "/start":
+
+                send(
+                    chat_id,
+                    """🎵 ربات موسیقی‌یاب
+
+لینک:
+• YouTube
+• Instagram Reel
+• TikTok
+• Aparat
+
+را ارسال کنید."""
+                )
+
+                continue
+
+            if not is_url(text):
+
+                send(
+                    chat_id,
+                    "❌ لطفاً لینک ویدیو ارسال کنید."
+                )
+
+                continue
+
+            send(
+                chat_id,
+                "🔍 در حال بررسی ویدیو..."
+            )
+
+            audio_url = get_direct_audio_url(text)
+
+            if not audio_url:
+
+                send(
+                    chat_id,
+                    "❌ خطا در دریافت صدا."
+                )
+
+                continue
+
+            send(
+                chat_id,
+                "🎧 در حال تشخیص آهنگ..."
+            )
+
+            song = recognize_song(audio_url)
+
+            if not song:
+
+                send(
+                    chat_id,
+                    "❌ آهنگی پیدا نشد."
+                )
+
+                continue
+
+            send(
+                chat_id,
+                format_result(song)
+            )
+
+    except Exception as e:
+        print(e)
+
+    time.sleep(2)
