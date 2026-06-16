@@ -6,3 +6,6 @@ jsonify
 psycopg2-binary
 gunicorn
 yt-dlp
+fastapi
+uvicorn
+openai
