@@ -4,35 +4,41 @@ def is_url(text):
     return text.startswith("http://") or text.startswith("https://")
 
 
-def search_music(query):
-    result = subprocess.getoutput(
-        f'yt-dlp "ytsearch1:{query}" --get-title --get-url'
-    ).split("\n")
-
-    if len(result) >= 2:
-        return {
-            "title": result[0],
-            "url": result[1]
-        }
-
-    return None
-
-
 def get_audio_from_url(url):
-    result = subprocess.getoutput(
-        f'yt-dlp -f bestaudio -g "{url}"'
-    )
-    return result.strip()
+    try:
+        result = subprocess.run(
+            [
+                "yt-dlp",
+                "-f", "bestaudio",
+                "-g",
+                url
+            ],
+            capture_output=True,
+            text=True,
+            timeout=20   # ⛔ جلوگیری از گیر کردن
+        )
+
+        if result.returncode == 0:
+            return result.stdout.strip()
+
+        return None
+
+    except Exception:
+        return None
 
 
 def download_video_from_url(url):
     filename = "video.mp4"
 
-    subprocess.call([
-        "yt-dlp",
-        "-f", "bv+ba/b",
-        "-o", filename,
-        url
-    ])
+    try:
+        subprocess.run([
+            "yt-dlp",
+            "-f", "bv+ba/b",
+            "-o", filename,
+            url
+        ], timeout=60)
 
-    return filename
+        return filename
+
+    except Exception:
+        return None
