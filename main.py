@@ -1,7 +1,7 @@
 import requests
 import time
 
-from music import search_music, download_video, get_stream
+from music import search_music, is_url, get_audio_from_url, download_video_from_url
 from ai import recommend
 
 TOKEN = "1597508244:ka5UwETw7QiX-HTltkg5SMNv5MgMBDKC82c"
@@ -61,17 +61,32 @@ def keyboard(title, url):
 
 # ---------- HANDLE SONG ----------
 def handle_song(chat_id, user_id, text):
+
+    # 🎯 اگر لینک بود
+    if is_url(text):
+        send(chat_id, "🔊 در حال پردازش لینک...")
+
+        audio = get_audio_from_url(text)
+
+        if audio:
+            send_audio(chat_id, audio)
+            return
+
+        video = download_video_from_url(text)
+        send_video(chat_id, video)
+        return
+
+    # 🎵 اگر متن بود
     result = search_music(text)
 
-    # 🎵 AUDIO MODE
     if result:
         send(chat_id, f"🎵 {result['title']}", keyboard(result["title"], result["url"]))
         return
 
-    # 🎬 VIDEO FALLBACK
-    send(chat_id, "🎬 آهنگ پیدا نشد، در حال دانلود ویدیو...")
+    # 🎬 fallback
+    send(chat_id, "🎬 چیزی پیدا نشد، در حال دانلود ویدیو...")
 
-    video = download_video(text)
+    video = download_video_from_url(text)
     send_video(chat_id, video)
 
 
