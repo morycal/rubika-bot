@@ -14,7 +14,7 @@ def detect_mood(text):
         return "focus"
 
     return "normal"
-
+    
 
 def recommend(user_id, text=""):
     """
