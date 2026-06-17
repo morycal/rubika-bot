@@ -1,10 +1,10 @@
 import requests
 import time
 
-TOKEN = "YOUR_BALE_TOKEN"
+TOKEN = "1597508244:ka5UwETw7QiX-HTltkg5SMNv5MgMBDKC82c"
 BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 
-OWNER_ID = 123456789  # آیدی خودت
+OWNER_ID = 586110315  # آیدی خودت
 
 last_update_id = 0
 
