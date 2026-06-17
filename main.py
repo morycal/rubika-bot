@@ -1,149 +1,123 @@
 import requests
 import time
 
-from music import search_music, is_url, get_audio_from_url, download_video_from_url
-from ai import recommend
+TOKEN = "YOUR_BALE_TOKEN"
+BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 
-TOKEN = "1597508244:ka5UwETw7QiX-HTltkg5SMNv5MgMBDKC82c"
-BASE = f"https://tapi.bale.ai/bot{TOKEN}"
+OWNER_ID = 123456789  # آیدی خودت
 
-last_update = 0
+last_update_id = 0
 
+owner_answers = {
+"سلام": "سلام سرورم ❤️",
+"سلامم": "سلام سرور عزیزم ❤️",
+"خوبی": "ممنون سرورم، شما خوبی؟ 👑",
+"چطوری": "عالی‌ام سرورم، شما چطوری؟ 😊",
+"صبح بخیر": "صبح شما بخیر سرورم ☀️❤️",
+"ظهر بخیر": "ظهرتون بخیر سرورم 🌷",
+"عصر بخیر": "عصر بخیر سرورم 🌹",
+"شب بخیر": "شب شما هم بخیر سرورم 🌙❤️",
+"خسته نباشی": "فدای شما سرورم ❤️",
+"مرسی": "قربان شما سرورم 🌹",
+"ممنون": "خواهش می‌کنم سرورم ❤️",
+"چه خبر": "سلامتی سرورم، خبر خاصی نیست 😊",
+"بیداری": "بله سرورم، در خدمتم 👑",
+"هستی": "همیشه در خدمت سرورم ❤️",
+"آنلاینی": "بله سرورم، آنلاینم 👑",
+"ربات": "جانم سرورم؟ ❤️",
+"دوستم داری": "البته سرورم ❤️👑",
+"روز بخیر": "روز شما بخیر سرورم 🌹",
+"عاشقتم": "منم دوستت دارم سرورم ❤️",
+"خدانگهدار": "خدا نگهدار سرورم ❤️",
+"بای": "فعلاً سرورم 👋❤️",
+"خوابم میاد": "استراحت کن سرورم 😴❤️",
+"کمکم کن": "حتماً سرورم، بفرمایید 👑",
+"جواب بده": "در خدمتم سرورم ❤️",
+"عالی": "خوشحالم سرورم 🌹",
+"دمت گرم": "فدای شما سرورم ❤️",
+"قربونت": "قربان شما سرورم 👑❤️"
+}
 
-# ---------- SEND TEXT ----------
-def send(chat_id, text, reply=None):
-    data = {
-        "chat_id": chat_id,
-        "text": text
-    }
+def send_message(chat_id, text, reply_to=None):
+data = {
+"chat_id": chat_id,
+"text": text
+}
 
-    if reply:
-        data["reply_markup"] = reply
+```
+if reply_to:
+    data["reply_to_message_id"] = reply_to
 
-    requests.post(BASE + "/sendMessage", json=data)
-
-
-# ---------- SEND AUDIO ----------
-def send_audio(chat_id, url):
-    requests.post(BASE + "/sendAudio", data={
-        "chat_id": chat_id,
-        "audio": url
-    })
-
-
-# ---------- SEND VIDEO ----------
-def send_video(chat_id, file_path):
-    url = BASE + "/sendVideo"
-
-    with open(file_path, "rb") as f:
-        requests.post(url, data={
-            "chat_id": chat_id
-        }, files={
-            "video": f
-        })
-
-
-# ---------- KEYBOARD ----------
-def keyboard(title, url):
-    return {
-        "inline_keyboard": [
-            [
-                {"text": "▶️ Play", "url": url},
-                {"text": "🔊 Stream", "callback_data": f"stream|{url}"}
-            ],
-            [
-                {"text": "❤️ Like", "callback_data": f"like|{title}|{url}"},
-                {"text": "🎯 AI", "callback_data": "ai"}
-            ]
-        ]
-    }
-
-
-# ---------- HANDLE SONG ----------
-def handle_song(chat_id, user_id, text):
-
-    # 🎯 اگر لینک بود
-    if is_url(text):
-        send(chat_id, "🔊 در حال پردازش لینک...")
-
-        audio = get_audio_from_url(text)
-
-        if audio:
-            send_audio(chat_id, audio)
-            return
-
-        video = download_video_from_url(text)
-        send_video(chat_id, video)
-        return
-
-    # 🎵 اگر متن بود
-    result = search_music(text)
-
-    if result:
-        send(chat_id, f"🎵 {result['title']}", keyboard(result["title"], result["url"]))
-        return
-
-    # 🎬 fallback
-    send(chat_id, "🎬 چیزی پیدا نشد، در حال دانلود ویدیو...")
-
-    video = download_video_from_url(text)
-    send_video(chat_id, video)
-
-
-# ---------- CALLBACK ----------
-def handle_callback(chat_id, user_id, data):
-    parts = data.split("|")
-
-    if parts[0] == "stream":
-        stream = get_stream(parts[1])
-        send_audio(chat_id, stream)
-
-    elif parts[0] == "ai":
-        song = recommend(user_id)
-        send(chat_id, f"🤖 {song['title']}", keyboard(song["title"], song["url"]))
-
-
-# ---------- GET UPDATES ----------
-def get_updates():
-    global last_update
-
-    res = requests.get(
-        f"{BASE}/getUpdates?offset={last_update + 1}"
-    ).json()
-
-    for u in res.get("result", []):
-        last_update = u["update_id"]
-
-        # MESSAGE
-        if "message" in u:
-            msg = u["message"]
-            chat_id = msg["chat"]["id"]
-            text = msg.get("text", "")
-            user_id = str(chat_id)
-
-            if text.startswith("/start"):
-                send(chat_id, "🎧 Music Bot Ready!")
-            else:
-                handle_song(chat_id, user_id, text)
-
-        # CALLBACK
-        elif "callback_query" in u:
-            cb = u["callback_query"]
-            chat_id = cb["message"]["chat"]["id"]
-            user_id = str(chat_id)
-            data = cb["data"]
-
-            handle_callback(chat_id, user_id, data)
-
-
-# ---------- RUN ----------
-print("Bot is running...")
+requests.post(
+    f"{BASE_URL}/sendMessage",
+    json=data
+)
+```
 
 while True:
-    try:
-        get_updates()
-        time.sleep(1)
+try:
+response = requests.get(
+f"{BASE_URL}/getUpdates",
+params={"offset": last_update_id + 1}
+).json()
 
-    except Exception as e:
-        print("ERROR:", e)
-        time.sleep(2)
+```
+    for update in response.get("result", []):
+
+        last_update_id = update["update_id"]
+
+        if "message" not in update:
+            continue
+
+        message = update["message"]
+
+        chat_id = message["chat"]["id"]
+        user_id = message["from"]["id"]
+        message_id = message["message_id"]
+
+        text = message.get("text", "").strip()
+
+        if not text:
+            continue
+
+        # پاسخ مخصوص صاحب ربات
+        if user_id == OWNER_ID:
+
+            if text in owner_answers:
+                reply = owner_answers[text]
+            else:
+                reply = f"بفرمایید سرورم 👑\n{text}"
+
+        # پاسخ کاربران عادی
+        else:
+
+            if text == "/start":
+                reply = "سلام 👋\nبه ربات خوش آمدید."
+
+            elif text == "سلام":
+                reply = "سلام 👋"
+
+            elif text == "خوبی":
+                reply = "ممنون، خوبم 😊"
+
+            elif text == "شب بخیر":
+                reply = "شب شما هم بخیر 🌙"
+
+            elif text == "صبح بخیر":
+                reply = "صبح شما هم بخیر ☀️"
+
+            else:
+                reply = f"شما گفتید:\n{text}"
+
+        send_message(
+            chat_id,
+            reply,
+            reply_to=message_id
+        )
+
+    time.sleep(1)
+
+except Exception as e:
+    print("ERROR:", e)
+    time.sleep(5)
+```
