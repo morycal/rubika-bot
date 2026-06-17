@@ -1,58 +1,32 @@
 import requests
 import time
 
-TOKEN = "1597508244:ka5UwETw7QiX-HTltkg5SMNv5MgMBDKC82c"
+TOKEN = "YOUR_BALE_TOKEN"
 BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 
-OWNER_ID = 586110315  # آیدی خودت
+OWNER_ID = 586110315
 
 last_update_id = 0
 
 owner_answers = {
 "سلام": "سلام سرورم ❤️",
-"سلامم": "سلام سرور عزیزم ❤️",
 "خوبی": "ممنون سرورم، شما خوبی؟ 👑",
-"چطوری": "عالی‌ام سرورم، شما چطوری؟ 😊",
-"صبح بخیر": "صبح شما بخیر سرورم ☀️❤️",
-"ظهر بخیر": "ظهرتون بخیر سرورم 🌷",
-"عصر بخیر": "عصر بخیر سرورم 🌹",
-"شب بخیر": "شب شما هم بخیر سرورم 🌙❤️",
-"خسته نباشی": "فدای شما سرورم ❤️",
-"مرسی": "قربان شما سرورم 🌹",
+"چطوری": "عالی‌ام سرورم 😊",
+"صبح بخیر": "صبح شما بخیر سرورم ☀️",
+"شب بخیر": "شب شما هم بخیر سرورم 🌙",
+"مرسی": "قربان شما سرورم ❤️",
 "ممنون": "خواهش می‌کنم سرورم ❤️",
-"چه خبر": "سلامتی سرورم، خبر خاصی نیست 😊",
-"بیداری": "بله سرورم، در خدمتم 👑",
-"هستی": "همیشه در خدمت سرورم ❤️",
-"آنلاینی": "بله سرورم، آنلاینم 👑",
-"ربات": "جانم سرورم؟ ❤️",
-"دوستم داری": "البته سرورم ❤️👑",
-"روز بخیر": "روز شما بخیر سرورم 🌹",
-"عاشقتم": "منم دوستت دارم سرورم ❤️",
-"خدانگهدار": "خدا نگهدار سرورم ❤️",
-"بای": "فعلاً سرورم 👋❤️",
-"خوابم میاد": "استراحت کن سرورم 😴❤️",
-"کمکم کن": "حتماً سرورم، بفرمایید 👑",
-"جواب بده": "در خدمتم سرورم ❤️",
-"عالی": "خوشحالم سرورم 🌹",
-"دمت گرم": "فدای شما سرورم ❤️",
-"قربونت": "قربان شما سرورم 👑❤️"
+"چه خبر": "سلامتی سرورم 😊"
 }
 
-def send_message(chat_id, text, reply_to=None):
-data = {
+def send_message(chat_id, text):
+requests.post(
+f"{BASE_URL}/sendMessage",
+json={
 "chat_id": chat_id,
 "text": text
 }
-
-```
-if reply_to:
-    data["reply_to_message_id"] = reply_to
-
-requests.post(
-    f"{BASE_URL}/sendMessage",
-    json=data
 )
-```
 
 while True:
 try:
@@ -73,47 +47,24 @@ params={"offset": last_update_id + 1}
 
         chat_id = message["chat"]["id"]
         user_id = message["from"]["id"]
-        message_id = message["message_id"]
 
         text = message.get("text", "").strip()
 
         if not text:
             continue
 
-        # پاسخ مخصوص صاحب ربات
         if user_id == OWNER_ID:
-
             if text in owner_answers:
                 reply = owner_answers[text]
             else:
                 reply = f"بفرمایید سرورم 👑\n{text}"
-
-        # پاسخ کاربران عادی
         else:
-
             if text == "/start":
-                reply = "سلام 👋\nبه ربات خوش آمدید."
-
-            elif text == "سلام":
-                reply = "سلام 👋"
-
-            elif text == "خوبی":
-                reply = "ممنون، خوبم 😊"
-
-            elif text == "شب بخیر":
-                reply = "شب شما هم بخیر 🌙"
-
-            elif text == "صبح بخیر":
-                reply = "صبح شما هم بخیر ☀️"
-
+                reply = "سلام 👋 به ربات خوش آمدید"
             else:
                 reply = f"شما گفتید:\n{text}"
 
-        send_message(
-            chat_id,
-            reply,
-            reply_to=message_id
-        )
+        send_message(chat_id, reply)
 
     time.sleep(1)
 
