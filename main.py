@@ -29,8 +29,8 @@ json={
 )
 
 while True:
-try:
-response = requests.get(
+     try:
+        response = requests.get(
 f"{BASE_URL}/getUpdates",
 params={"offset": last_update_id + 1}
 ).json()
