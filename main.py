@@ -20,7 +20,7 @@ owner_answers = {
 }
 
 def send_message(chat_id, text):
-requests.post(
+    requests.post(
 f"{BASE_URL}/sendMessage",
 json={
 "chat_id": chat_id,
