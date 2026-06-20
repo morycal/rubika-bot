@@ -19,12 +19,12 @@ owner_answers = {
 }
 
 def send_message(chat_id, text, reply_to=None):
-data = {
+   data = {
 "chat_id": chat_id,
 "text": text
 }
 
-```
+
 if reply_to is not None:
     data["reply_to_message_id"] = reply_to
 
@@ -33,17 +33,17 @@ requests.post(
     json=data,
     timeout=10
 )
-```
+
 
 while True:
-try:
-response = requests.get(
+     try:
+        response = requests.get(
 f"{BASE_URL}/getUpdates",
 params={"offset": last_update_id + 1},
 timeout=20
 ).json()
 
-```
+
     for update in response.get("result", []):
 
         last_update_id = update["update_id"]
@@ -88,4 +88,4 @@ timeout=20
 except Exception as e:
     print("ERROR:", e)
     time.sleep(5)
-```
+
