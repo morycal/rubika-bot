@@ -1,6 +1,7 @@
 import requests
 import time
 import random
+from difflib import get_close_matches
 
 TOKEN = "1597508244:ka5UwETw7QiX-HTltkg5SMNv5MgMBDKC82c"
 BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
@@ -38,14 +39,16 @@ truths = [
     "بزرگ‌ترین ترست چیه؟",
     "آخرین باری که گریه کردی کی بود؟",
     "بامزه‌ترین خاطره‌ات چیه؟",
-    "تا حالا دروغ بزرگ گفتی؟"
+    "تا حالا دروغ بزرگ گفتی؟",
+    "آخرین باری که خجالت کشیدی کی بود؟"
 ]
 
 dares = [
     "10 بار بالا و پایین بپر",
     "تا 1 دقیقه نخند",
     "یک جوک تعریف کن",
-    "به یک دوست پیام سلام بفرست"
+    "به یک دوست پیام سلام بفرست",
+    "5 شنا برو"
 ]
 
 def send_message(chat_id, text, reply_to=None):
@@ -54,14 +57,43 @@ def send_message(chat_id, text, reply_to=None):
         "text": text
     }
 
-    if reply_to:
+    if reply_to is not None:
         data["reply_to_message_id"] = reply_to
 
-    requests.post(
-        f"{BASE_URL}/sendMessage",
-        json=data,
-        timeout=10
+    try:
+        requests.post(
+            f"{BASE_URL}/sendMessage",
+            json=data,
+            timeout=10
+        )
+    except:
+        pass
+
+def match_command(text):
+    commands = [
+        "سلام",
+        "خوبی",
+        "صبح بخیر",
+        "شب بخیر",
+        "چالش",
+        "تاس",
+        "شیر یا خط",
+        "عدد شانسی",
+        "حقیقت",
+        "جرئت"
+    ]
+
+    result = get_close_matches(
+        text,
+        commands,
+        n=1,
+        cutoff=0.65
     )
+
+    if result:
+        return result[0]
+
+    return text
 
 while True:
     try:
@@ -89,9 +121,11 @@ while True:
             if not text:
                 continue
 
-            # بازی‌ها و چالش
+            matched_text = match_command(text)
 
-            if text == "چالش":
+            # بازی ها
+
+            if matched_text == "چالش":
                 send_message(
                     chat_id,
                     f"🎯 چالش:\n\n{random.choice(challenges)}",
@@ -99,7 +133,7 @@ while True:
                 )
                 continue
 
-            if text == "تاس":
+            if matched_text == "تاس":
                 send_message(
                     chat_id,
                     f"🎲 عدد تاس: {random.randint(1,6)}",
@@ -107,7 +141,7 @@ while True:
                 )
                 continue
 
-            if text == "شیر یا خط":
+            if matched_text == "شیر یا خط":
                 send_message(
                     chat_id,
                     f"🪙 {random.choice(['شیر','خط'])}",
@@ -115,7 +149,7 @@ while True:
                 )
                 continue
 
-            if text == "عدد شانسی":
+            if matched_text == "عدد شانسی":
                 send_message(
                     chat_id,
                     f"🔢 عدد شانسی شما: {random.randint(1,100)}",
@@ -123,7 +157,7 @@ while True:
                 )
                 continue
 
-            if text == "حقیقت":
+            if matched_text == "حقیقت":
                 send_message(
                     chat_id,
                     f"🎤 حقیقت:\n{random.choice(truths)}",
@@ -131,7 +165,7 @@ while True:
                 )
                 continue
 
-            if text == "جرئت":
+            if matched_text == "جرئت":
                 send_message(
                     chat_id,
                     f"🔥 جرئت:\n{random.choice(dares)}",
@@ -147,7 +181,7 @@ while True:
                     BOT_ENABLED = False
                     send_message(
                         chat_id,
-                        "اخ جوون من خوابیدم😴😍",
+                        "اخ جوون من خوابیدم 😴😍",
                         reply_to=message_id
                     )
                     continue
@@ -156,12 +190,12 @@ while True:
                     BOT_ENABLED = True
                     send_message(
                         chat_id,
-                        "ای ملعون چرا بیدارم میکنی🤬",
+                        "ای ملعون چرا بیدارم میکنی 🤬",
                         reply_to=message_id
                     )
                     continue
 
-            # اگر خاموش باشد فقط ادمین کار کند
+            # خاموش بودن ربات
 
             if not BOT_ENABLED and user_id != OWNER_ID:
                 continue
@@ -171,7 +205,7 @@ while True:
             if user_id == OWNER_ID:
 
                 reply = owner_answers.get(
-                    text,
+                    matched_text,
                     "چی چی میگویی ملعون؟ 😈"
                 )
 
@@ -183,7 +217,7 @@ while True:
                     reply = (
                         "سلام 👋\n"
                         "به ربات خوش آمدید\n\n"
-                        "دستورات:\n"
+                        "🎮 دستورات:\n"
                         "چالش\n"
                         "تاس\n"
                         "شیر یا خط\n"
@@ -192,16 +226,16 @@ while True:
                         "جرئت"
                     )
 
-                elif text == "سلام":
+                elif matched_text == "سلام":
                     reply = "سلام 👋"
 
-                elif text == "خوبی":
+                elif matched_text == "خوبی":
                     reply = "ممنون، خوبم 😊"
 
-                elif text == "صبح بخیر":
+                elif matched_text == "صبح بخیر":
                     reply = "صبح شما هم بخیر ☀️"
 
-                elif text == "شب بخیر":
+                elif matched_text == "شب بخیر":
                     reply = "شب شما هم بخیر 🌙"
 
                 else:
