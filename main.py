@@ -62,7 +62,7 @@ while True:
             if user_id == OWNER_ID:
                 reply = owner_answers.get(
                     text,
-                    f"بفرمایید سرورم 👑\n{text}"
+                    f"\n{چی چی میگویی ملعون؟}"
                 )
             else:
                 if text == "/start":
@@ -72,7 +72,7 @@ while True:
                 elif text == "خوبی":
                     reply = "ممنون، خوبم 😊"
                 else:
-                    reply = f"\n{text}"
+                    reply = f"\n{هااان؟؟}"
 
             send_message(
                 chat_id,
