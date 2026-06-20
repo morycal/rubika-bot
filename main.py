@@ -8,63 +8,84 @@ OWNER_ID = 586110315
 last_update_id = 0
 
 owner_answers = {
-    "سلام": "سلام سرورم ❤️",
-    "خوبی": "ممنون سرورم، شما خوبی؟ 👑",
-    "چطوری": "عالی‌ام سرورم 😊",
-    "صبح بخیر": "صبح شما بخیر سرورم ☀️",
-    "شب بخیر": "شب شما هم بخیر سرورم 🌙"
+"سلام": "سلام سرورم ❤️",
+"خوبی": "ممنون سرورم، شما خوبی؟ 👑",
+"چطوری": "عالی‌ام سرورم 😊",
+"صبح بخیر": "صبح شما بخیر سرورم ☀️",
+"شب بخیر": "شب شما هم بخیر سرورم 🌙",
+"مرسی": "قربان شما سرورم ❤️",
+"ممنون": "خواهش می‌کنم سرورم ❤️",
+"چه خبر": "سلامتی سرورم 😊"
 }
 
+def send_message(chat_id, text, reply_to=None):
+data = {
+"chat_id": chat_id,
+"text": text
+}
 
-def send_message(chat_id, text):
-    requests.post(
-        f"{BASE_URL}/sendMessage",
-        json={
-            "chat_id": chat_id,
-            "text": text
-        }
-    )
+```
+if reply_to is not None:
+    data["reply_to_message_id"] = reply_to
 
+requests.post(
+    f"{BASE_URL}/sendMessage",
+    json=data,
+    timeout=10
+)
+```
 
 while True:
-    try:
-        response = requests.get(
-            f"{BASE_URL}/getUpdates",
-            params={"offset": last_update_id + 1}
-        ).json()
+try:
+response = requests.get(
+f"{BASE_URL}/getUpdates",
+params={"offset": last_update_id + 1},
+timeout=20
+).json()
 
-        for update in response.get("result", []):
+```
+    for update in response.get("result", []):
 
-            last_update_id = update["update_id"]
+        last_update_id = update["update_id"]
 
-            if "message" not in update:
-                continue
+        if "message" not in update:
+            continue
 
-            message = update["message"]
+        message = update["message"]
 
-            chat_id = message["chat"]["id"]
-            user_id = message["from"]["id"]
+        chat_id = message["chat"]["id"]
+        user_id = message["from"]["id"]
+        message_id = message["message_id"]
 
-            text = message.get("text", "").strip()
+        text = message.get("text", "").strip()
 
-            if not text:
-                continue
+        if not text:
+            continue
 
-            if user_id == OWNER_ID:
-                reply = owner_answers.get(
-                    text,
-                    f"بفرمایید سرورم 👑\n{text}"
-                )
+        if user_id == OWNER_ID:
+            reply = owner_answers.get(
+                text,
+                f"بفرمایید سرورم 👑\n{text}"
+            )
+        else:
+            if text == "/start":
+                reply = "سلام 👋\nبه ربات خوش آمدید"
+            elif text == "سلام":
+                reply = "سلام 👋"
+            elif text == "خوبی":
+                reply = "ممنون، خوبم 😊"
             else:
-                if text == "/start":
-                    reply = "سلام 👋 به ربات خوش آمدید"
-                else:
-                    reply = f"شما گفتید:\n{text}"
+                reply = f"شما گفتید:\n{text}"
 
-            send_message(chat_id, reply)
+        send_message(
+            chat_id,
+            reply,
+            reply_to=message_id
+        )
 
-        time.sleep(1)
+    time.sleep(1)
 
-    except Exception as e:
-        print("ERROR:", e)
-        time.sleep(5)
+except Exception as e:
+    print("ERROR:", e)
+    time.sleep(5)
+```
