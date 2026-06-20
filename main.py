@@ -25,23 +25,27 @@ challenges = [
     "20 شنا برو",
     "30 درازنشست برو",
     "10 دقیقه پیاده‌روی کن",
-    "به 3 نفر سلام کن",
     "یک صفحه کتاب بخوان",
-    "5 دقیقه ورزش کن",
-    "10 دقیقه زبان بخوان",
-    "اتاقت را مرتب کن",
     "به یک دوست پیام بده",
-    "یک لیوان آب بنوش",
-    "5 دقیقه مدیتیشن کن",
-    "امروز هیچ دروغی نگو",
+    "اتاقت را مرتب کن",
+    "10 دقیقه زبان بخوان",
     "به یک نفر کمک کن",
-    "20 بار طناب مجازی بزن",
-    "یک کار خوب انجام بده",
-    "10 دقیقه بدون موبایل باش",
+    "5 دقیقه مدیتیشن کن",
+    "امروز هیچ دروغی نگو"
+]
+
+truths = [
+    "بزرگ‌ترین ترست چیه؟",
+    "آخرین باری که گریه کردی کی بود؟",
+    "بامزه‌ترین خاطره‌ات چیه؟",
+    "تا حالا دروغ بزرگ گفتی؟"
+]
+
+dares = [
+    "10 بار بالا و پایین بپر",
+    "تا 1 دقیقه نخند",
     "یک جوک تعریف کن",
-    "به پدر یا مادرت کمک کن",
-    "یک چیز جدید یاد بگیر",
-    "20 ثانیه پلانک برو"
+    "به یک دوست پیام سلام بفرست"
 ]
 
 def send_message(chat_id, text, reply_to=None):
@@ -50,7 +54,7 @@ def send_message(chat_id, text, reply_to=None):
         "text": text
     }
 
-    if reply_to is not None:
+    if reply_to:
         data["reply_to_message_id"] = reply_to
 
     requests.post(
@@ -85,16 +89,58 @@ while True:
             if not text:
                 continue
 
-            # چالش تصادفی
+            # بازی‌ها و چالش
+
             if text == "چالش":
                 send_message(
                     chat_id,
-                    f"🎯 چالش تصادفی:\n\n{random.choice(challenges)}",
+                    f"🎯 چالش:\n\n{random.choice(challenges)}",
+                    reply_to=message_id
+                )
+                continue
+
+            if text == "تاس":
+                send_message(
+                    chat_id,
+                    f"🎲 عدد تاس: {random.randint(1,6)}",
+                    reply_to=message_id
+                )
+                continue
+
+            if text == "شیر یا خط":
+                send_message(
+                    chat_id,
+                    f"🪙 {random.choice(['شیر','خط'])}",
+                    reply_to=message_id
+                )
+                continue
+
+            if text == "عدد شانسی":
+                send_message(
+                    chat_id,
+                    f"🔢 عدد شانسی شما: {random.randint(1,100)}",
+                    reply_to=message_id
+                )
+                continue
+
+            if text == "حقیقت":
+                send_message(
+                    chat_id,
+                    f"🎤 حقیقت:\n{random.choice(truths)}",
+                    reply_to=message_id
+                )
+                continue
+
+            if text == "جرئت":
+                send_message(
+                    chat_id,
+                    f"🔥 جرئت:\n{random.choice(dares)}",
                     reply_to=message_id
                 )
                 continue
 
             # دستورات ادمین
+
             if user_id == OWNER_ID:
 
                 if text == "خاموش":
@@ -106,7 +152,7 @@ while True:
                     )
                     continue
 
-                elif text == "روشن":
+                if text == "روشن":
                     BOT_ENABLED = True
                     send_message(
                         chat_id,
@@ -115,11 +161,13 @@ while True:
                     )
                     continue
 
-            # اگر خاموش باشد فقط ادمین اجازه استفاده دارد
+            # اگر خاموش باشد فقط ادمین کار کند
+
             if not BOT_ENABLED and user_id != OWNER_ID:
                 continue
 
-            # پاسخ‌های ادمین
+            # پاسخ ادمین
+
             if user_id == OWNER_ID:
 
                 reply = owner_answers.get(
@@ -127,11 +175,22 @@ while True:
                     "چی چی میگویی ملعون؟ 😈"
                 )
 
-            # پاسخ کاربران عادی
+            # کاربران عادی
+
             else:
 
                 if text == "/start":
-                    reply = "سلام 👋\nبه ربات خوش آمدید"
+                    reply = (
+                        "سلام 👋\n"
+                        "به ربات خوش آمدید\n\n"
+                        "دستورات:\n"
+                        "چالش\n"
+                        "تاس\n"
+                        "شیر یا خط\n"
+                        "عدد شانسی\n"
+                        "حقیقت\n"
+                        "جرئت"
+                    )
 
                 elif text == "سلام":
                     reply = "سلام 👋"
@@ -139,11 +198,11 @@ while True:
                 elif text == "خوبی":
                     reply = "ممنون، خوبم 😊"
 
-                elif text == "شب بخیر":
-                    reply = "شب شما هم بخیر 🌙"
-
                 elif text == "صبح بخیر":
                     reply = "صبح شما هم بخیر ☀️"
+
+                elif text == "شب بخیر":
+                    reply = "شب شما هم بخیر 🌙"
 
                 else:
                     reply = "هااان؟؟ 🤔"
