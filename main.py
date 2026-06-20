@@ -72,7 +72,7 @@ while True:
                 elif text == "خوبی":
                     reply = "ممنون، خوبم 😊"
                 else:
-                    reply = :\n{text}"
+                    reply = \n{text}"
 
             send_message(
                 chat_id,
