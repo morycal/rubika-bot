@@ -1,5 +1,6 @@
 import requests
 import time
+import random
 
 TOKEN = "1597508244:ka5UwETw7QiX-HTltkg5SMNv5MgMBDKC82c"
 BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
@@ -19,6 +20,29 @@ owner_answers = {
     "ممنون": "خواهش می‌کنم خوابالو ❤️",
     "چه خبر": "سلامتی ترنک 😊"
 }
+
+challenges = [
+    "20 شنا برو",
+    "30 درازنشست برو",
+    "10 دقیقه پیاده‌روی کن",
+    "به 3 نفر سلام کن",
+    "یک صفحه کتاب بخوان",
+    "5 دقیقه ورزش کن",
+    "10 دقیقه زبان بخوان",
+    "اتاقت را مرتب کن",
+    "به یک دوست پیام بده",
+    "یک لیوان آب بنوش",
+    "5 دقیقه مدیتیشن کن",
+    "امروز هیچ دروغی نگو",
+    "به یک نفر کمک کن",
+    "20 بار طناب مجازی بزن",
+    "یک کار خوب انجام بده",
+    "10 دقیقه بدون موبایل باش",
+    "یک جوک تعریف کن",
+    "به پدر یا مادرت کمک کن",
+    "یک چیز جدید یاد بگیر",
+    "20 ثانیه پلانک برو"
+]
 
 def send_message(chat_id, text, reply_to=None):
     data = {
@@ -59,6 +83,15 @@ while True:
             text = message.get("text", "").strip()
 
             if not text:
+                continue
+
+            # چالش تصادفی
+            if text == "چالش":
+                send_message(
+                    chat_id,
+                    f"🎯 چالش تصادفی:\n\n{random.choice(challenges)}",
+                    reply_to=message_id
+                )
                 continue
 
             # دستورات ادمین
