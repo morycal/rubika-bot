@@ -36,7 +36,7 @@ params={"offset": last_update_id + 1}
 ).json()
 
 
-    for update in response.get("result", []):
+    for update in response.get("result"):
 
         last_update_id = update["update_id"]
 
