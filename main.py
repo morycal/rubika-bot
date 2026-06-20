@@ -35,6 +35,7 @@ f"{BASE_URL}/getUpdates",
 params={"offset": last_update_id + 1}
 ).json()
 
+
     for update in response.get("result", []):
 
         last_update_id = update["update_id"]
@@ -70,4 +71,4 @@ params={"offset": last_update_id + 1}
 except Exception as e:
     print("ERROR:", e)
     time.sleep(5)
-```
+
