@@ -143,20 +143,20 @@ while True:
 
             if user_id == OWNER_ID:
 
-                if text == "خاموش":
+                if text == "بخواب":
                     BOT_ENABLED = False
                     send_message(
                         chat_id,
-                        "🔴 ربات خاموش شد",
+                        "اخ جوون من خوابیدم😴😍",
                         reply_to=message_id
                     )
                     continue
 
-                if text == "روشن":
+                if text == "بیدارشو":
                     BOT_ENABLED = True
                     send_message(
                         chat_id,
-                        "🟢 ربات روشن شد",
+                        "ای ملعون چرا بیدارم میکنی🤬",
                         reply_to=message_id
                     )
                     continue
