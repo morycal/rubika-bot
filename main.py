@@ -5,15 +5,17 @@ TOKEN = "1597508244:ka5UwETw7QiX-HTltkg5SMNv5MgMBDKC82c"
 BASE_URL = f"https://tapi.bale.ai/bot{TOKEN}"
 
 OWNER_ID = 586110315
+
 last_update_id = 0
+BOT_ENABLED = True
 
 owner_answers = {
-    "سلام": "سلام ملعون بزرگ ",
-    "خوبی": "فدات ملعون ، تو هم که همیشه خوبی 😂",
+    "سلام": "سلام ملعون بزرگ 😈",
+    "خوبی": "فدات ملعون، تو هم که همیشه خوبی 😂",
     "چطوری": "عالی‌ام ملعون 😊",
     "صبح بخیر": "صبح شما بخیر مارمولک ☀️",
-     "شب بخیر": "شب شما هم بخیر ملعون اعظم 🌙",
-    "مرسی": "قربان شما  ❤️",
+    "شب بخیر": "شب شما هم بخیر ملعون اعظم 🌙",
+    "مرسی": "قربان شما ❤️",
     "ممنون": "خواهش می‌کنم خوابالو ❤️",
     "چه خبر": "سلامتی ترنک 😊"
 }
@@ -59,20 +61,59 @@ while True:
             if not text:
                 continue
 
+            # دستورات ادمین
             if user_id == OWNER_ID:
+
+                if text == "خاموش":
+                    BOT_ENABLED = False
+                    send_message(
+                        chat_id,
+                        "🔴 ربات خاموش شد",
+                        reply_to=message_id
+                    )
+                    continue
+
+                elif text == "روشن":
+                    BOT_ENABLED = True
+                    send_message(
+                        chat_id,
+                        "🟢 ربات روشن شد",
+                        reply_to=message_id
+                    )
+                    continue
+
+            # اگر خاموش باشد فقط ادمین اجازه استفاده دارد
+            if not BOT_ENABLED and user_id != OWNER_ID:
+                continue
+
+            # پاسخ‌های ادمین
+            if user_id == OWNER_ID:
+
                 reply = owner_answers.get(
                     text,
-                    f"\nچی چی میگویی ملعون؟"
+                    "چی چی میگویی ملعون؟ 😈"
                 )
+
+            # پاسخ کاربران عادی
             else:
+
                 if text == "/start":
                     reply = "سلام 👋\nبه ربات خوش آمدید"
+
                 elif text == "سلام":
                     reply = "سلام 👋"
+
                 elif text == "خوبی":
                     reply = "ممنون، خوبم 😊"
+
+                elif text == "شب بخیر":
+                    reply = "شب شما هم بخیر 🌙"
+
+                elif text == "صبح بخیر":
+                    reply = "صبح شما هم بخیر ☀️"
+
                 else:
-                    reply = f"\nهااان؟؟"
+                    reply = "هااان؟؟ 🤔"
 
             send_message(
                 chat_id,
