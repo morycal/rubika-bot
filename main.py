@@ -3,8 +3,8 @@ import time
 import requests
 from openai import OpenAI
 
-BALE_TOKEN = os.getenv("1597508244:ka5UwETw7QiX-HTltkg5SMNv5MgMBDKC82c")
-HF_TOKEN = os.getenv("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")
+BALE_TOKEN = os.getenv("BALE_TOKEN")
+HF_TOKEN = os.getenv("HF_TOKEN")
 
 client = OpenAI(
     base_url="https://router.huggingface.co/v1",
