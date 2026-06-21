@@ -67,6 +67,14 @@ def activate_vip(user_id):
     db.commit()
 
 
+def deactivate_vip(user_id):
+    cur.execute(
+        "UPDATE users SET vip_until=0 WHERE user_id=?",
+        (user_id,)
+    )
+    db.commit()
+
+
 def can_use(user_id):
     questions, vip_until = get_user(user_id)
 
@@ -112,20 +120,18 @@ while True:
             message = update["message"]
 
             chat_id = message["chat"]["id"]
-            user_id = message["from"]["id"]   # ⭐ مهم‌ترین اصلاح
+            user_id = message["from"]["id"]
             text = message.get("text", "").strip()
 
             if not text:
                 continue
 
-            # /start
+            # start
             if text == "/start":
                 send_message(
                     chat_id,
-                    f"سلام 👋\n"
-                    f"۳ سوال رایگان داری.\n"
-                    f"بعد از آن باید با ادمین هماهنگ کنی.\n\n"
-                    f"آیدی ادمین:\n@ahmmad24"
+                    f"سلام 👋\n۳ سوال رایگان داری.\n"
+                    f"ادمین: {ADMIN_ID}"
                 )
                 continue
 
@@ -140,7 +146,7 @@ while True:
 
                 continue
 
-            # admin vip
+            # VIP activate
             if user_id == ADMIN_ID and text.startswith("/vip"):
                 parts = text.split()
 
@@ -158,17 +164,34 @@ while True:
 
                 continue
 
+            # VIP deactivate ⭐ NEW
+            if user_id == ADMIN_ID and text.startswith("/unvip"):
+                parts = text.split()
+
+                if len(parts) != 2:
+                    send_message(chat_id, "مثال: /unvip 123456789")
+                    continue
+
+                target = int(parts[1])
+
+                get_user(target)
+                deactivate_vip(target)
+
+                send_message(chat_id, f"VIP غیرفعال شد برای {target}")
+                send_message(target, "❌ اشتراک شما غیرفعال شد")
+
+                continue
+
             # check access
             if not can_use(user_id):
                 send_message(
                     chat_id,
                     f"❌ اتمام اعتبار\n"
-                    f"برای فعال‌سازی با ادمین هماهنگ کنید\n"
-                    f"ID: @ahmmad24"
+                    f"با ادمین هماهنگ کنید\nID: {ADMIN_ID}"
                 )
                 continue
 
-            # increase usage only if not VIP
+            # increase usage
             q, vip = get_user(user_id)
             if vip < int(time.time()):
                 add_question(user_id)
