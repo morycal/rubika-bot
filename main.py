@@ -119,10 +119,16 @@ def can_use(user_id):
 # ================= AI =================
 def ask_ai(user_id, text):
 
-    cur.execute(
-        "SELECT role,content FROM memory WHERE user_id=%s ORDER BY rowid DESC LIMIT 10",
-        (user_id,)
-    )
+   cur.execute(
+    """
+    SELECT role,content
+    FROM memory
+    WHERE user_id=%s
+    ORDER BY id DESC
+    LIMIT 10
+    """,
+    (user_id,)
+)
 
     history = cur.fetchall()[::-1]
 
