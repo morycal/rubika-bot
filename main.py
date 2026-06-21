@@ -33,16 +33,14 @@ CREATE TABLE IF NOT EXISTS users(
 """)
 
 cur.execute("""
-CREATE TABLE memory(
+CREATE TABLE IF NOT EXISTS memory(
     id SERIAL PRIMARY KEY,
     user_id BIGINT,
     role TEXT,
     content TEXT,
     created_at TIMESTAMP DEFAULT NOW()
-);
 )
 """)
-
 conn.commit()
 
 # ================= BOT =================
