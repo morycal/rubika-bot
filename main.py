@@ -33,10 +33,13 @@ CREATE TABLE IF NOT EXISTS users(
 """)
 
 cur.execute("""
-CREATE TABLE IF NOT EXISTS memory(
+CREATE TABLE memory(
+    id SERIAL PRIMARY KEY,
     user_id BIGINT,
     role TEXT,
-    content TEXT
+    content TEXT,
+    created_at TIMESTAMP DEFAULT NOW()
+);
 )
 """)
 
