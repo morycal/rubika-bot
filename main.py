@@ -32,25 +32,18 @@ db.commit()
 def send_message(chat_id, text):
     requests.post(
         f"{BASE_URL}/sendMessage",
-        json={
-            "chat_id": chat_id,
-            "text": text[:4000]
-        },
+        json={"chat_id": chat_id, "text": text[:4000]},
         timeout=30
     )
 
 
 def get_user(user_id):
-    cur.execute(
-        "SELECT questions,vip_until FROM users WHERE user_id=?",
-        (user_id,)
-    )
-
+    cur.execute("SELECT questions, vip_until FROM users WHERE user_id=?", (user_id,))
     row = cur.fetchone()
 
     if not row:
         cur.execute(
-            "INSERT INTO users(user_id,questions,vip_until) VALUES(?,?,?)",
+            "INSERT INTO users(user_id, questions, vip_until) VALUES(?,?,?)",
             (user_id, 0, 0)
         )
         db.commit()
@@ -60,10 +53,7 @@ def get_user(user_id):
 
 
 def add_question(user_id):
-    cur.execute(
-        "UPDATE users SET questions=questions+1 WHERE user_id=?",
-        (user_id,)
-    )
+    cur.execute("UPDATE users SET questions = questions + 1 WHERE user_id=?", (user_id,))
     db.commit()
 
 
@@ -80,9 +70,7 @@ def activate_vip(user_id):
 def can_use(user_id):
     questions, vip_until = get_user(user_id)
 
-    now = int(time.time())
-
-    if vip_until > now:
+    if vip_until > int(time.time()):
         return True
 
     return questions < 3
@@ -93,18 +81,11 @@ def ask_ai(text):
         response = client.chat.completions.create(
             model="Qwen/Qwen3-8B",
             messages=[
-                {
-                    "role": "system",
-                    "content": "تو یک دستیار فارسی زبان مفید هستی."
-                },
-                {
-                    "role": "user",
-                    "content": text
-                }
+                {"role": "system", "content": "تو یک دستیار فارسی هستی."},
+                {"role": "user", "content": text}
             ],
             max_tokens=500
         )
-
         return response.choices[0].message.content
 
     except Exception as e:
@@ -112,22 +93,17 @@ def ask_ai(text):
 
 
 offset = 0
-
 print("Bot Started")
 
 while True:
     try:
         updates = requests.get(
             f"{BASE_URL}/getUpdates",
-            params={
-                "offset": offset,
-                "timeout": 30
-            },
+            params={"offset": offset, "timeout": 30},
             timeout=35
         ).json()
 
         for update in updates.get("result", []):
-
             offset = update["update_id"] + 1
 
             if "message" not in update:
@@ -136,88 +112,68 @@ while True:
             message = update["message"]
 
             chat_id = message["chat"]["id"]
+            user_id = message["from"]["id"]   # ⭐ مهم‌ترین اصلاح
             text = message.get("text", "").strip()
 
             if not text:
                 continue
 
+            # /start
             if text == "/start":
                 send_message(
                     chat_id,
                     f"سلام 👋\n"
                     f"۳ سوال رایگان داری.\n"
-                    f"بعد از اتمام اعتبار برای فعالسازی اشتراک ماهانه 10000 تومان با ادمین هماهنگ کن.\n\n"
+                    f"بعد از آن باید با ادمین هماهنگ کنی.\n\n"
                     f"آیدی ادمین:\n@ahmmad24"
                 )
                 continue
 
+            # status
             if text == "/status":
+                q, vip = get_user(user_id)
 
-                questions, vip_until = get_user(chat_id)
-
-                if vip_until > int(time.time()):
-                    days = (vip_until - int(time.time())) // 86400
-                    send_message(
-                        chat_id,
-                        f"✅ اشتراک فعال\n"
-                        f"روز باقی مانده: {days}"
-                    )
+                if vip > int(time.time()):
+                    send_message(chat_id, "✅ اشتراک فعال است")
                 else:
-                    remain = max(0, 3 - questions)
-
-                    send_message(
-                        chat_id,
-                        f"سوال رایگان باقی مانده: {remain}"
-                    )
+                    send_message(chat_id, f"سوال باقی‌مانده: {max(0, 3 - q)}")
 
                 continue
 
-            if chat_id == ADMIN_ID and text.startswith("/vip"):
-
+            # admin vip
+            if user_id == ADMIN_ID and text.startswith("/vip"):
                 parts = text.split()
 
                 if len(parts) != 2:
-                    send_message(
-                        chat_id,
-                        "نمونه:\n/vip 123456789"
-                    )
+                    send_message(chat_id, "مثال: /vip 123456789")
                     continue
 
-                target_id = int(parts[1])
+                target = int(parts[1])
 
-                get_user(target_id)
-                activate_vip(target_id)
+                get_user(target)
+                activate_vip(target)
 
-                send_message(
-                    chat_id,
-                    f"اشتراک کاربر {target_id} فعال شد."
-                )
-
-                send_message(
-                    target_id,
-                    "✅ اشتراک 30 روزه شما فعال شد."
-                )
+                send_message(chat_id, f"VIP فعال شد برای {target}")
+                send_message(target, "✅ اشتراک شما فعال شد")
 
                 continue
 
-            if not can_use(chat_id):
-
+            # check access
+            if not can_use(user_id):
                 send_message(
                     chat_id,
-                    "❌ اعتبار رایگان شما تمام شده است.\n\n"
-                    "برای فعالسازی اشتراک ماهانه 10000 تومان با ادمین هماهنگ کنید.\n\n"
-                    f"آیدی ادمین:\n@ahmmad24"
+                    f"❌ اتمام اعتبار\n"
+                    f"برای فعال‌سازی با ادمین هماهنگ کنید\n"
+                    f"ID: @ahmmad24"
                 )
-
                 continue
 
-            questions, vip_until = get_user(chat_id)
-
-            if vip_until < int(time.time()):
-                add_question(chat_id)
+            # increase usage only if not VIP
+            q, vip = get_user(user_id)
+            if vip < int(time.time()):
+                add_question(user_id)
 
             answer = ask_ai(text)
-
             send_message(chat_id, answer)
 
     except Exception as e:
