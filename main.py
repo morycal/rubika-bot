@@ -130,27 +130,36 @@ def can_use(user_id):
 # ================= AI =================
 def ask_ai(user_id, text):
 
-   cur.execute(
-    """
-    SELECT role, content
-    FROM memory
-    WHERE user_id=%s
-    ORDER BY id DESC
-    LIMIT 10
-    """,
-    (user_id,)
-)
+    cur.execute(
+        """
+        SELECT role, content
+        FROM memory
+        WHERE user_id=%s
+        ORDER BY id DESC
+        LIMIT 10
+        """,
+        (user_id,)
+    )
 
     history = cur.fetchall()[::-1]
 
     messages = [
-        {"role": "system", "content": "تو یک دستیار فارسی حرفه‌ای هستی."}
+        {
+            "role": "system",
+            "content": "تو یک دستیار فارسی حرفه‌ای هستی."
+        }
     ]
 
     for role, content in history:
-        messages.append({"role": role, "content": content})
+        messages.append({
+            "role": role,
+            "content": content
+        })
 
-    messages.append({"role": "user", "content": text})
+    messages.append({
+        "role": "user",
+        "content": text
+    })
 
     res = client.chat.completions.create(
         model="Qwen/Qwen3-8B",
@@ -161,12 +170,12 @@ def ask_ai(user_id, text):
     answer = res.choices[0].message.content
 
     cur.execute(
-        "INSERT INTO memory(user_id,role,content) VALUES(%s,%s,%s)",
+        "INSERT INTO memory(user_id, role, content) VALUES(%s, %s, %s)",
         (user_id, "user", text)
     )
 
     cur.execute(
-        "INSERT INTO memory(user_id,role,content) VALUES(%s,%s,%s)",
+        "INSERT INTO memory(user_id, role, content) VALUES(%s, %s, %s)",
         (user_id, "assistant", answer)
     )
 
