@@ -33,14 +33,13 @@ CREATE TABLE IF NOT EXISTS users(
 """)
 
 cur.execute("""
-CREATE TABLE IF NOT EXISTS memory(
+CREATE TABLE memory(
     id SERIAL PRIMARY KEY,
     user_id BIGINT,
     role TEXT,
     content TEXT,
     created_at TIMESTAMP DEFAULT NOW()
-)
-""")
+);
 conn.commit()
 
 # ================= BOT =================
@@ -80,9 +79,14 @@ def add_question(user_id):
 def set_vip(user_id, days):
     now = int(time.time())
 
-    cur.execute("SELECT vip_until FROM users WHERE user_id=%s", (user_id,))
-    vip = cur.fetchone()[0]
+  get_user(user_id)
 
+cur.execute(
+    "SELECT vip_until FROM users WHERE user_id=%s",
+    (user_id,)
+)
+
+vip = cur.fetchone()[0]
     base = max(vip, now)
     new_vip = base + days * 86400
 
@@ -262,6 +266,7 @@ while True:
             answer = ask_ai(user_id, text)
             send(chat_id, answer)
 
-    except Exception as e:
-        print("ERR:", e)
-        time.sleep(3)
+  except Exception as e:
+    conn.rollback()
+    print("ERR:", e)
+    time.sleep(3)
