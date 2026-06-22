@@ -131,7 +131,7 @@ def ask_ai(user_id, text):
         WHERE user_id=%s
         ORDER BY id DESC
         LIMIT 10
-        """,
+        """)
         (user_id,)
     )
 
