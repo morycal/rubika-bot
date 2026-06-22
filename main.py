@@ -33,13 +33,14 @@ CREATE TABLE IF NOT EXISTS users(
 """)
 
 cur.execute("""
-CREATE TABLE memory(
+CREATE TABLE IF NOT EXISTS memory(
     id SERIAL PRIMARY KEY,
     user_id BIGINT,
     role TEXT,
     content TEXT,
     created_at TIMESTAMP DEFAULT NOW()
-);
+)
+""")
 conn.commit()
 
 # ================= BOT =================
@@ -79,18 +80,23 @@ def add_question(user_id):
 def set_vip(user_id, days):
     now = int(time.time())
 
-  get_user(user_id)
+    get_user(user_id)
 
-cur.execute(
-    "SELECT vip_until FROM users WHERE user_id=%s",
-    (user_id,)
-)
+    cur.execute(
+        "SELECT vip_until FROM users WHERE user_id=%s",
+        (user_id,)
+    )
 
-vip = cur.fetchone()[0]
+    vip = cur.fetchone()[0]
+
     base = max(vip, now)
     new_vip = base + days * 86400
 
-    cur.execute("UPDATE users SET vip_until=%s WHERE user_id=%s", (new_vip, user_id))
+    cur.execute(
+        "UPDATE users SET vip_until=%s WHERE user_id=%s",
+        (new_vip, user_id)
+    )
+
     conn.commit()
 
 
@@ -124,16 +130,16 @@ def can_use(user_id):
 # ================= AI =================
 def ask_ai(user_id, text):
 
-    cur.execute(
-        """
-        SELECT role, content
-        FROM memory
-        WHERE user_id=%s
-        ORDER BY id DESC
-        LIMIT 10
-        """)
-        (user_id,)
-    )
+   cur.execute(
+    """
+    SELECT role, content
+    FROM memory
+    WHERE user_id=%s
+    ORDER BY id DESC
+    LIMIT 10
+    """,
+    (user_id,)
+)
 
     history = cur.fetchall()[::-1]
 
@@ -266,7 +272,7 @@ while True:
             answer = ask_ai(user_id, text)
             send(chat_id, answer)
 
-  except Exception as e:
-    conn.rollback()
-    print("ERR:", e)
-    time.sleep(3)
+     except Exception as e:
+        conn.rollback()
+        print("ERR:", e)
+        time.sleep(3)
