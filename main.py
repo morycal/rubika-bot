@@ -120,7 +120,7 @@ while True:
             timeout=35
         ).json()
 
-       for upd in data.get("result", []):
+ for upd in data.get("result", []):
 
     print(upd)
 
