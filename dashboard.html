@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Revenue Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+<h2>📊 درآمد ربات</h2>
+
+<canvas id="c"></canvas>
+
+<script>
+
+async function load(){
+    const res = await fetch("http://localhost:5000/api/revenue");
+    const data = await res.json();
+
+    const labels = data.map(x=>x.date);
+    const values = data.map(x=>x.amount);
+
+    new Chart(document.getElementById("c"),{
+        type:"line",
+        data:{
+            labels,
+            datasets:[{
+                label:"Revenue",
+                data:values,
+                borderColor:"green",
+                fill:true
+            }]
+        }
+    });
+}
+
+load();
+
+</script>
+
+</body>
+</html>
