@@ -1,13 +1,11 @@
 import os
 import time
+import sqlite3
 import requests
-import psycopg2
 from openai import OpenAI
 
-# ================= CONFIG =================
 BALE_TOKEN = os.getenv("BALE_TOKEN")
 HF_TOKEN = os.getenv("HF_TOKEN")
-DATABASE_URL = os.getenv("DATABASE_URL")
 
 ADMIN_ID = 586110315
 
@@ -18,32 +16,23 @@ client = OpenAI(
 
 BASE_URL = f"https://tapi.bale.ai/bot{BALE_TOKEN}"
 
-conn = psycopg2.connect(DATABASE_URL)
-cur = conn.cursor()
+# ================= DATABASE =================
+db = sqlite3.connect("users.db", check_same_thread=False)
+cur = db.cursor()
 
-# ================= DB =================
 cur.execute("""
 CREATE TABLE IF NOT EXISTS users(
-    user_id BIGINT PRIMARY KEY,
-    questions INT DEFAULT 0,
-    vip_until BIGINT DEFAULT 0,
-    banned INT DEFAULT 0,
-    last_message BIGINT DEFAULT 0
+    user_id INTEGER PRIMARY KEY,
+    questions INTEGER DEFAULT 0,
+    vip_until INTEGER DEFAULT 0,
+    banned INTEGER DEFAULT 0,
+    last_message INTEGER DEFAULT 0
 )
 """)
+db.commit()
 
-cur.execute("""
-CREATE TABLE IF NOT EXISTS memory(
-    id SERIAL PRIMARY KEY,
-    user_id BIGINT,
-    role TEXT,
-    content TEXT,
-    created_at TIMESTAMP DEFAULT NOW()
-)
-""")
-conn.commit()
 
-# ================= BOT =================
+# ================= TELEGRAM =================
 def send(chat_id, text):
     requests.post(
         f"{BASE_URL}/sendMessage",
@@ -52,73 +41,65 @@ def send(chat_id, text):
     )
 
 
+# ================= USER =================
 def get_user(user_id):
-    cur.execute("SELECT questions,vip_until,banned,last_message FROM users WHERE user_id=%s", (user_id,))
+    cur.execute("SELECT questions,vip_until,banned,last_message FROM users WHERE user_id=?", (user_id,))
     row = cur.fetchone()
 
     if not row:
         cur.execute(
-            "INSERT INTO users(user_id,questions,vip_until,banned,last_message) VALUES(%s,0,0,0,0)",
-            (user_id,)
+            "INSERT INTO users(user_id,questions,vip_until,banned,last_message) VALUES(?,?,?,?,?)",
+            (user_id, 0, 0, 0, 0)
         )
-        conn.commit()
+        db.commit()
         return (0, 0, 0, 0)
 
     return row
 
 
 def update_last(user_id):
-    cur.execute("UPDATE users SET last_message=%s WHERE user_id=%s", (int(time.time()), user_id))
-    conn.commit()
+    cur.execute("UPDATE users SET last_message=? WHERE user_id=?", (int(time.time()), user_id))
+    db.commit()
 
 
 def add_question(user_id):
-    cur.execute("UPDATE users SET questions = questions + 1 WHERE user_id=%s", (user_id,))
-    conn.commit()
+    cur.execute("UPDATE users SET questions = questions + 1 WHERE user_id=?", (user_id,))
+    db.commit()
 
 
 def set_vip(user_id, days):
     now = int(time.time())
 
-    get_user(user_id)
+    if days == -1:
+        vip_until = 10**12
+    else:
+        _, vip_until, _, _ = get_user(user_id)
+        base = max(vip_until, now)
+        vip_until = base + (days * 86400)
 
-    cur.execute(
-        "SELECT vip_until FROM users WHERE user_id=%s",
-        (user_id,)
-    )
-
-    vip = cur.fetchone()[0]
-
-    base = max(vip, now)
-    new_vip = base + days * 86400
-
-    cur.execute(
-        "UPDATE users SET vip_until=%s WHERE user_id=%s",
-        (new_vip, user_id)
-    )
-
-    conn.commit()
+    cur.execute("UPDATE users SET vip_until=? WHERE user_id=?", (vip_until, user_id))
+    db.commit()
 
 
 def remove_vip(user_id):
-    cur.execute("UPDATE users SET vip_until=0 WHERE user_id=%s", (user_id,))
-    conn.commit()
+    cur.execute("UPDATE users SET vip_until=0 WHERE user_id=?", (user_id,))
+    db.commit()
 
 
 def ban(user_id):
-    cur.execute("UPDATE users SET banned=1 WHERE user_id=%s", (user_id,))
-    conn.commit()
+    cur.execute("UPDATE users SET banned=1 WHERE user_id=?", (user_id,))
+    db.commit()
 
 
 def unban(user_id):
-    cur.execute("UPDATE users SET banned=0 WHERE user_id=%s", (user_id,))
-    conn.commit()
+    cur.execute("UPDATE users SET banned=0 WHERE user_id=?", (user_id,))
+    db.commit()
 
 
 def can_use(user_id):
     q, vip, banned, last = get_user(user_id)
 
-    if banned:
+    if banned == 1:
         return False
 
     if vip > int(time.time()):
@@ -128,63 +109,23 @@ def can_use(user_id):
 
 
 # ================= AI =================
-def ask_ai(user_id, text):
+def ask_ai(text):
+    try:
+        res = client.chat.completions.create(
+            model="Qwen/Qwen3-8B",
+            messages=[
+                {"role": "system", "content": "تو یک دستیار فارسی حرفه‌ای هستی."},
+                {"role": "user", "content": text}
+            ],
+            max_tokens=500
+        )
+        return res.choices[0].message.content
 
-    cur.execute(
-        """
-        SELECT role, content
-        FROM memory
-        WHERE user_id=%s
-        ORDER BY id DESC
-        LIMIT 10
-        """,
-        (user_id,)
-    )
-
-    history = cur.fetchall()[::-1]
-
-    messages = [
-        {
-            "role": "system",
-            "content": "تو یک دستیار فارسی حرفه‌ای هستی."
-        }
-    ]
-
-    for role, content in history:
-        messages.append({
-            "role": role,
-            "content": content
-        })
-
-    messages.append({
-        "role": "user",
-        "content": text
-    })
-
-    res = client.chat.completions.create(
-        model="Qwen/Qwen3-8B",
-        messages=messages,
-        max_tokens=500
-    )
-
-    answer = res.choices[0].message.content
-
-    cur.execute(
-        "INSERT INTO memory(user_id, role, content) VALUES(%s, %s, %s)",
-        (user_id, "user", text)
-    )
-
-    cur.execute(
-        "INSERT INTO memory(user_id, role, content) VALUES(%s, %s, %s)",
-        (user_id, "assistant", answer)
-    )
-
-    conn.commit()
-
-    return answer
+    except Exception as e:
+        return f"خطا AI: {e}"
 
 
-# ================= LOOP =================
+# ================= BOT LOOP =================
 offset = 0
 print("BOT STARTED")
 
@@ -196,13 +137,13 @@ while True:
             timeout=35
         ).json()
 
-        for u in updates.get("result", []):
-            offset = u["update_id"] + 1
+        for upd in updates.get("result", []):
+            offset = upd["update_id"] + 1
 
-            if "message" not in u:
+            if "message" not in upd:
                 continue
 
-            msg = u["message"]
+            msg = upd["message"]
 
             chat_id = msg["chat"]["id"]
             user_id = msg["from"]["id"]
@@ -213,75 +154,116 @@ while True:
 
             q, vip, banned, last = get_user(user_id)
 
-            # anti spam
+            # ================= SPAM PROTECTION =================
             now = int(time.time())
-            if now - last < 4:
-                send(chat_id, "⏳ صبر کن")
+            if now - last < 5:
+                send(chat_id, "⏳ لطفاً کمی صبر کنید")
                 continue
 
             update_last(user_id)
 
-            if banned:
-                send(chat_id, "⛔ بن هستی")
+            # ================= BAN CHECK =================
+            if banned == 1:
+                send(chat_id, "⛔ شما بن هستید")
                 continue
 
-            # commands
+            # ================= START =================
             if text == "/start":
-                send(chat_id, "سلام 👋")
+                send(chat_id,
+                    f"سلام 👋\n"
+                    f"۳ سوال رایگان داری\n"
+                    f"ادمین: @ahmmad24"
+                )
                 continue
 
-            if text == "/reset":
-                cur.execute("DELETE FROM memory WHERE user_id=%s", (user_id,))
-                conn.commit()
-                send(chat_id, "🧠 حافظه پاک شد")
-                continue
-
+            # ================= STATUS =================
             if text == "/status":
                 if vip > now:
-                    send(chat_id, "⭐ VIP فعال")
+                    send(chat_id, "⭐ VIP فعال است")
                 else:
-                    send(chat_id, f"سوال باقی: {max(0, 3-q)}")
+                    send(chat_id, f"سوال باقی‌مانده: {max(0, 3-q)}")
                 continue
 
-            # admin
-            if user_id == ADMIN_ID:
+            # ================= ADMIN CHECK =================
+            is_admin = (user_id == ADMIN_ID)
 
-                if text.startswith("/vip"):
-                    _, uid, days = text.split()
-                    set_vip(int(uid), int(days))
-                    send(chat_id, "VIP OK")
+            # ================= VIP =================
+            if is_admin and text.startswith("/vip"):
+                parts = text.split()
+
+                if len(parts) < 3:
+                    send(chat_id, "مثال: /vip 123 30")
                     continue
 
-                if text.startswith("/unvip"):
-                    uid = int(text.split()[1])
-                    remove_vip(uid)
-                    send(chat_id, "VIP OFF")
-                    continue
+                target = int(parts[1])
+                days = int(parts[2])
 
-                if text.startswith("/ban"):
-                    uid = int(text.split()[1])
-                    ban(uid)
-                    send(chat_id, "BANNED")
-                    continue
+                set_vip(target, days)
 
-                if text.startswith("/unban"):
-                    uid = int(text.split()[1])
-                    unban(uid)
-                    send(chat_id, "UNBANNED")
-                    continue
+                send(chat_id, f"VIP فعال شد برای {target}")
 
-            # limit
+                continue
+
+            # ================= UNVIP =================
+            if is_admin and text.startswith("/unvip"):
+                target = int(text.split()[1])
+                remove_vip(target)
+                send(chat_id, "VIP حذف شد")
+                continue
+
+            # ================= BAN =================
+            if is_admin and text.startswith("/ban"):
+                target = int(text.split()[1])
+                ban(target)
+                send(chat_id, "بن شد")
+                continue
+
+            # ================= UNBAN =================
+            if is_admin and text.startswith("/unban"):
+                target = int(text.split()[1])
+                unban(target)
+                send(chat_id, "آنبن شد")
+                continue
+
+            # ================= STATS =================
+            if is_admin and text == "/stats":
+                cur.execute("SELECT COUNT(*) FROM users")
+                users = cur.fetchone()[0]
+
+                cur.execute("SELECT COUNT(*) FROM users WHERE vip_until>?", (now,))
+                vipc = cur.fetchone()[0]
+
+                send(chat_id,
+                    f"👥 کاربران: {users}\n⭐ VIP: {vipc}"
+                )
+                continue
+
+            # ================= BROADCAST =================
+            if is_admin and text.startswith("/broadcast"):
+                msg_text = text.replace("/broadcast", "").strip()
+
+                cur.execute("SELECT user_id FROM users")
+                for (uid,) in cur.fetchall():
+                    send(uid, msg_text)
+
+                continue
+
+            # ================= ACCESS CHECK =================
             if not can_use(user_id):
-                send(chat_id, "❌ اتمام اعتبار")
+                send(chat_id,
+                    f"❌ اتمام اعتبار\n"
+                    f"با ادمین هماهنگ کنید\nID: @ahmmad24"
+                )
                 continue
 
+            # ================= USAGE COUNT =================
             if vip < now:
                 add_question(user_id)
 
-            answer = ask_ai(user_id, text)
+            # ================= AI =================
+            answer = ask_ai(text)
             send(chat_id, answer)
 
-     except Exception as e:
-        conn.rollback()
-        print("ERR:", e)
-        time.sleep(3)
+    except Exception as e:
+        print("ERROR:", e)
+        time.sleep(5)
