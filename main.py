@@ -5,8 +5,8 @@ import requests
 import threading
 import re
 from queue import PriorityQueue
+from flask import Flask, jsonify, request
 from openai import OpenAI
-from flask import Flask, jsonify
 
 # ================= CONFIG =================
 BALE_TOKEN = os.getenv("BALE_TOKEN")
@@ -21,17 +21,17 @@ client = OpenAI(
 )
 
 # ================= DB =================
-db = sqlite3.connect("bot.db", check_same_thread=False)
+db = sqlite3.connect("mori.db", check_same_thread=False)
 cur = db.cursor()
 
 cur.execute("""
 CREATE TABLE IF NOT EXISTS users(
 user_id INTEGER PRIMARY KEY,
-vip_until INTEGER DEFAULT 0,
 credits INTEGER DEFAULT 20,
+vip_until INTEGER DEFAULT 0,
+persona TEXT DEFAULT 'normal',
 last_message INTEGER DEFAULT 0,
-banned INTEGER DEFAULT 0,
-persona TEXT DEFAULT 'normal'
+banned INTEGER DEFAULT 0
 )
 """)
 
@@ -39,26 +39,28 @@ cur.execute("""
 CREATE TABLE IF NOT EXISTS memory(
 id INTEGER PRIMARY KEY AUTOINCREMENT,
 user_id INTEGER,
+role TEXT,
 content TEXT,
-summary INTEGER DEFAULT 0,
 ts INTEGER
 )
 """)
 
 cur.execute("""
-CREATE TABLE IF NOT EXISTS logs(
+CREATE TABLE IF NOT EXISTS payments(
 id INTEGER PRIMARY KEY AUTOINCREMENT,
 user_id INTEGER,
-action TEXT,
+amount INTEGER,
+status TEXT DEFAULT 'pending',
 ts INTEGER
 )
 """)
 
 db.commit()
 
-# ================= WEB PANEL =================
+# ================= APP =================
 app = Flask(__name__)
 
+# ================= DASHBOARD API =================
 @app.route("/api/stats")
 def stats():
     cur.execute("SELECT COUNT(*) FROM users")
@@ -67,11 +69,34 @@ def stats():
     cur.execute("SELECT SUM(credits) FROM users")
     credits = cur.fetchone()[0] or 0
 
+    cur.execute("SELECT COUNT(*) FROM payments WHERE status='paid'")
+    revenue = cur.fetchone()[0]
+
     return jsonify({
         "users": users,
-        "total_credits": credits
+        "credits_total": credits,
+        "payments": revenue
     })
 
+# ================= PAYMENT CALLBACK =================
+@app.route("/api/pay", methods=["POST"])
+def pay():
+    data = request.json
+    uid = data["user_id"]
+    amount = data["amount"]
+
+    cur.execute("""
+        INSERT INTO payments(user_id,amount,ts)
+        VALUES(?,?,?)
+    """, (uid, amount, int(time.time())))
+    db.commit()
+
+    cur.execute("UPDATE users SET credits = credits + ? WHERE user_id=?", (amount, uid))
+    db.commit()
+
+    return {"ok": True}
+
+# ================= RUN API =================
 threading.Thread(target=lambda: app.run(host="0.0.0.0", port=5000), daemon=True).start()
 
 # ================= CORE =================
@@ -87,84 +112,68 @@ def send(chat_id, text, reply_to=None):
 
 # ================= USER =================
 def get_user(uid):
-    cur.execute("SELECT vip_until,credits,last_message,banned,persona FROM users WHERE user_id=?", (uid,))
+    cur.execute("SELECT credits,vip_until,persona,last_message,banned FROM users WHERE user_id=?", (uid,))
     row = cur.fetchone()
     if not row:
         cur.execute("INSERT INTO users(user_id) VALUES(?)", (uid,))
         db.commit()
-        return (0, 20, 0, 0, "normal")
+        return (20, 0, "normal", 0, 0)
     return row
 
-def update_user(uid, **kwargs):
+def update(uid, **kwargs):
     for k, v in kwargs.items():
         cur.execute(f"UPDATE users SET {k}=? WHERE user_id=?", (v, uid))
     db.commit()
 
-# ================= LOG =================
-def log(uid, action):
-    cur.execute("INSERT INTO logs(user_id,action,ts) VALUES(?,?,?)", (uid, action, int(time.time())))
+# ================= MEMORY =================
+def save_memory(uid, role, text):
+    cur.execute("INSERT INTO memory(user_id,role,content,ts) VALUES(?,?,?,?)",
+                (uid, role, text, int(time.time())))
     db.commit()
+
+def load_memory(uid):
+    cur.execute("SELECT role,content FROM memory WHERE user_id=? ORDER BY id DESC LIMIT 8", (uid,))
+    rows = cur.fetchall()
+    return [{"role": r, "content": c} for r, c in reversed(rows)]
 
 # ================= MORI DETECTOR =================
 def is_calling_mori(msg, text):
     if msg["chat"]["type"] == "private":
         return True
 
-    t = text.lower()
-
     if msg.get("reply_to_message"):
+        return True
+
+    if re.search(r"\b(موری|mori|@mori)\b", text.lower()):
         return True
 
     for e in msg.get("entities", []):
         if e.get("type") == "mention":
             return True
 
-    return bool(re.search(r"\b(موری|mori|@mori)\b|هی موری|موری جان", t))
+    return False
 
 # ================= ANTI SPAM =================
 def anti_spam(uid, chat_id):
-    now = time.time()
     key = f"{uid}:{chat_id}"
-    last = spam.get(key, 0)
+    now = time.time()
 
-    if now - last < 3:
+    if now - spam.get(key, 0) < 3:
         return False
 
     spam[key] = now
     return True
 
-# ================= PERSONA =================
-def persona_prompt(p):
-    if p == "funny":
-        return "تو موری هستی، شوخ و دوستانه جواب بده."
-    if p == "strict":
-        return "تو موری هستی، رسمی و کوتاه و جدی جواب بده."
-    return "تو موری هستی، هوشمند و مفید و متعادل جواب بده."
-
-# ================= MEMORY =================
-def save_memory(uid, text):
-    cur.execute("INSERT INTO memory(user_id,content,ts) VALUES(?,?,?)", (uid, text, int(time.time())))
-    db.commit()
-
-def load_memory(uid):
-    cur.execute("SELECT content FROM memory WHERE user_id=? ORDER BY id DESC LIMIT 6", (uid,))
-    rows = cur.fetchall()
-    return [r[0] for r in reversed(rows)]
-
-def summarize_if_needed(uid):
-    cur.execute("SELECT COUNT(*) FROM memory WHERE user_id=?", (uid,))
-    c = cur.fetchone()[0]
-    if c > 30:
-        cur.execute("DELETE FROM memory WHERE user_id=? AND id IN (SELECT id FROM memory WHERE user_id=? LIMIT 10)", (uid, uid))
-        db.commit()
-
-# ================= AI =================
+# ================= AI ENGINE =================
 def ask_ai(uid, text, persona):
-    messages = [{"role": "system", "content": persona_prompt(persona)}]
+    system = {
+        "normal": "تو موری هستی، دستیار هوشمند فارسی.",
+        "funny": "تو موری هستی، شوخ و بامزه جواب بده.",
+        "strict": "تو موری هستی، کوتاه و رسمی جواب بده."
+    }
 
-    for m in load_memory(uid):
-        messages.append({"role": "user", "content": m})
-
+    messages = [{"role": "system", "content": system.get(persona, system["normal"])}]
+    messages += load_memory(uid)
     messages.append({"role": "user", "content": text})
 
     res = client.chat.completions.create(
@@ -182,22 +191,23 @@ def worker():
         uid, chat_id, msg_id, text = data
 
         try:
-            vip_until, credits, last, banned, persona = get_user(uid)
+            credits, vip, persona, last, banned = get_user(uid)
+
+            if banned:
+                continue
 
             if credits <= 0:
-                send(chat_id, "❌ اعتبار تمام شده", reply_to=msg_id)
+                send(chat_id, "❌ اعتبار شما تمام شده", reply_to=msg_id)
                 continue
 
             reply = ask_ai(uid, text, persona)
 
-            update_user(uid, credits=credits-1)
+            update(uid, credits=credits-1)
 
             send(chat_id, reply, reply_to=msg_id)
 
-            save_memory(uid, text)
-            save_memory(uid, reply)
-
-            summarize_if_needed(uid)
+            save_memory(uid, "user", text)
+            save_memory(uid, "assistant", reply)
 
         except Exception as e:
             print("AI ERROR:", e)
@@ -207,8 +217,8 @@ def worker():
 
 threading.Thread(target=worker, daemon=True).start()
 
-# ================= MAIN =================
-print("MORI PRO 4 RUNNING")
+# ================= BOT LOOP =================
+print("MORI PRO 5 RUNNING")
 
 offset = 0
 
@@ -234,7 +244,7 @@ while True:
             if not text:
                 continue
 
-            vip, credits, last, banned, persona = get_user(uid)
+            credits, vip, persona, last, banned = get_user(uid)
 
             if banned:
                 continue
@@ -242,7 +252,7 @@ while True:
             if uid != ADMIN_ID and time.time() - last < 2:
                 continue
 
-            update_user(uid, last_message=int(time.time()))
+            update(uid, last_message=int(time.time()))
 
             # ================= GROUP FILTER =================
             if msg["chat"]["type"] != "private":
@@ -253,14 +263,15 @@ while True:
 
             # ================= ADMIN =================
             if text == "/admin" and uid == ADMIN_ID:
-                send(chat_id, f"👑 USERS: {cur.execute('SELECT COUNT(*) FROM users').fetchone()[0]}")
+                cur.execute("SELECT COUNT(*) FROM users")
+                total = cur.fetchone()[0]
+                send(chat_id, f"👑 Users: {total}", reply_to=msg_id)
                 continue
 
-            # ================= PERSONA SWITCH =================
-            if text.startswith("/persona"):
-                p = text.split(" ", 1)[1] if " " in text else "normal"
-                update_user(uid, persona=p)
-                send(chat_id, f"🎭 Persona set to {p}", reply_to=msg_id)
+            # ================= PAYMENT SIM =================
+            if text.startswith("/buy"):
+                update(uid, credits=credits + 10)
+                send(chat_id, "💳 10 credit اضافه شد", reply_to=msg_id)
                 continue
 
             # ================= QUEUE =================
