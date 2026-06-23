@@ -126,8 +126,8 @@ while True:
 
             offset = upd["update_id"] + 1
 
-          if "message" not in upd:
-             continue
+             if "message" not in upd:
+                continue
 
             msg = upd["message"]
             uid = msg["from"]["id"]
