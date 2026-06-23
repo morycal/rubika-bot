@@ -164,44 +164,142 @@ def ask_ai(uid, text):
 
 # ================= BUTTON MENUS =================
 def shop(chat_id):
-    send(chat_id,
-         "💎 خرید اشتراک",
-         reply_markup={
-             "inline_keyboard": [
-                 [{"text": "🥉 7 روز VIP", "callback_data": "vip_7"}],
-                 [{"text": "🥈 30 روز VIP", "callback_data": "vip_30"}],
-                 [{"text": "🥇 365 روز VIP", "callback_data": "vip_365"}],
-             ]
-         })
+    send(
+        chat_id,
+        "💎 خرید اشتراک MORI ULTRA\n\nیکی از پلن‌ها را انتخاب کنید:",
+        reply_markup={
+            "inline_keyboard": [
+                [
+                    {"text": "🥉 7 روز - 10K", "callback_data": "vip_7"},
+                    {"text": "🥈 30 روز - 30K", "callback_data": "vip_30"}
+                ],
+                [
+                    {"text": "🥇 365 روز - 100K", "callback_data": "vip_365"}
+                ],
+                [
+                    {"text": "📞 راهنما پرداخت", "callback_data": "vip_help"}
+                ]
+            ]
+        }
+    )
 
 def admin_panel(chat_id):
     cur.execute("SELECT COUNT(*) FROM users")
     users = cur.fetchone()[0]
 
-    send(chat_id,
-         f"""👑 ADMIN PANEL
+    cur.execute("SELECT COUNT(*) FROM payments")
+    payments = cur.fetchone()[0]
+
+    cur.execute("SELECT SUM(amount) FROM payments WHERE status='paid'")
+    revenue = cur.fetchone()[0] or 0
+
+    send(
+        chat_id,
+        f"""👑 MORI ULTRA ADMIN PANEL
 
 👥 Users: {users}
-📊 Daily system active
-""")
+💳 Payments: {payments}
+💰 Revenue: {revenue}
+
+⚙️ مدیریت کامل سیستم
+""",
+        reply_markup={
+            "inline_keyboard": [
+                [
+                    {"text": "👥 کاربران", "callback_data": "adm_users"},
+                    {"text": "🚫 بن مدیریت", "callback_data": "adm_ban"}
+                ],
+                [
+                    {"text": "💳 پرداخت‌ها", "callback_data": "adm_payments"},
+                    {"text": "💎 VIP ها", "callback_data": "adm_vips"}
+                ],
+                [
+                    {"text": "📊 آمار لحظه‌ای", "callback_data": "adm_stats"}
+                ],
+                [
+                    {"text": "🔄 ریست روزانه", "callback_data": "adm_reset"}
+                ]
+            ]
+        }
+    )
 
 # ================= CALLBACK =================
 def handle_callback(data, chat_id, uid):
-    if data == "shop":
-        shop(chat_id)
+
+    # ===== VIP SHOP =====
+    if data == "vip_help":
+        send(chat_id, "💳 پرداخت کارت به کارت و ارسال رسید")
+        return
 
     if data.startswith("vip_"):
-        days = {"vip_7":7,"vip_30":30,"vip_365":365}[data]
+        days_map = {
+            "vip_7": 7,
+            "vip_30": 30,
+            "vip_365": 365
+        }
 
-        cur.execute("""
-            INSERT INTO payments(user_id,plan,amount,ts)
-            VALUES(?,?,?,?)
-        """, (uid, data, days*1000, int(time.time())))
-        db.commit()
+        days = days_map.get(data, 0)
 
-        update(uid, vip_until=int(time.time()) + days*86400)
+        update(uid, vip_until=int(time.time()) + days * 86400)
 
-        send(chat_id, "✅ اشتراک فعال شد")
+        send(chat_id, f"✅ VIP {days} روزه فعال شد")
+        return
+
+    # ===== ADMIN PANEL =====
+    if uid == ADMIN_ID:
+
+        if data == "adm_users":
+            cur.execute("SELECT user_id,vip_until,daily_count FROM users LIMIT 10")
+            rows = cur.fetchall()
+
+            txt = "👥 USERS:\n"
+            for r in rows:
+                txt += f"{r[0]} | VIP:{r[1]} | DAY:{r[2]}\n"
+
+            send(chat_id, txt)
+            return
+
+        if data == "adm_payments":
+            cur.execute("SELECT user_id,plan,amount FROM payments LIMIT 10")
+            rows = cur.fetchall()
+
+            txt = "💳 PAYMENTS:\n"
+            for r in rows:
+                txt += f"{r[0]} | {r[1]} | {r[2]}\n"
+
+            send(chat_id, txt)
+            return
+
+        if data == "adm_vips":
+            cur.execute("SELECT user_id,vip_until FROM users WHERE vip_until>?", (time.time(),))
+            rows = cur.fetchall()
+
+            txt = "💎 VIP USERS:\n"
+            for r in rows:
+                txt += f"{r[0]} | expire:{r[1]}\n"
+
+            send(chat_id, txt)
+            return
+
+        if data == "adm_stats":
+            cur.execute("SELECT COUNT(*) FROM users")
+            users = cur.fetchone()[0]
+
+            cur.execute("SELECT COUNT(*) FROM payments")
+            payments = cur.fetchone()[0]
+
+            send(chat_id, f"📊 USERS:{users}\n💳 PAY:{payments}")
+            return
+
+        if data == "adm_reset":
+            cur.execute("UPDATE users SET daily_count=0")
+            db.commit()
+            send(chat_id, "🔄 Daily reset done")
+            return
+
+        if data == "adm_ban":
+            send(chat_id, "🚫 برای بن: /ban user_id")
+            return
 
 # ================= MAIN =================
 offset = 0
@@ -243,10 +341,10 @@ while True:
                 continue
 
             if text == "/shop":
-                shop(chat_id)
-                continue
+               shop(chat_id)
+               continue
 
-            if uid == ADMIN_ID and text == "/admin":
+             if text == "/admin" and uid == ADMIN_ID:
                 admin_panel(chat_id)
                 continue
 
