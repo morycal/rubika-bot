@@ -5,7 +5,6 @@ import requests
 import threading
 import re
 from queue import Queue
-from collections import defaultdict, deque
 from openai import OpenAI
 from flask import Flask, jsonify
 
@@ -15,7 +14,6 @@ HF_TOKEN = os.getenv("HF_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "586110315"))
 
 BASE_URL = f"https://tapi.bale.ai/bot{BALE_TOKEN}"
-CARD = "1010202030304040"
 
 client = OpenAI(
     base_url="https://router.huggingface.co/v1",
@@ -31,8 +29,18 @@ CREATE TABLE IF NOT EXISTS users(
 user_id INTEGER PRIMARY KEY,
 vip_until INTEGER DEFAULT 0,
 last_message INTEGER DEFAULT 0,
-state TEXT DEFAULT '',
-banned INTEGER DEFAULT 0
+banned INTEGER DEFAULT 0,
+state TEXT DEFAULT ''
+)
+""")
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS memory(
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+user_id INTEGER,
+role TEXT,
+content TEXT,
+ts INTEGER
 )
 """)
 
@@ -70,23 +78,19 @@ def stats():
         "revenue": revenue
     })
 
-def run_api():
-    app.run(host="0.0.0.0", port=5000)
+threading.Thread(target=lambda: app.run(host="0.0.0.0", port=5000), daemon=True).start()
 
-# ================= BOT STATE =================
-memory = defaultdict(lambda: deque(maxlen=6))
-spam = {}
+# ================= CORE =================
 task_queue = Queue()
+spam = {}
+
+CARD = "1010202030304040"
 
 # ================= SEND =================
 def send(chat_id, text, reply_to=None):
-    data = {
-        "chat_id": chat_id,
-        "text": text[:4000],
-    }
+    data = {"chat_id": chat_id, "text": text[:4000]}
     if reply_to:
         data["reply_to_message_id"] = reply_to
-
     requests.post(f"{BASE_URL}/sendMessage", json=data)
 
 # ================= USER =================
@@ -99,25 +103,36 @@ def get_user(uid):
         return (0, 0, 0, "")
     return row
 
-def set_state(uid, state):
-    cur.execute("UPDATE users SET state=? WHERE user_id=?", (state, uid))
+def update_last(uid, now):
+    cur.execute("UPDATE users SET last_message=? WHERE user_id=?", (now, uid))
     db.commit()
 
 def set_ban(uid, val):
     cur.execute("UPDATE users SET banned=? WHERE user_id=?", (val, uid))
     db.commit()
 
-def set_vip(uid, days):
-    now = int(time.time())
-    cur.execute("SELECT vip_until FROM users WHERE user_id=?", (uid,))
-    old = cur.fetchone()[0] or 0
-    new = max(now, old) + days * 86400
-    cur.execute("UPDATE users SET vip_until=? WHERE user_id=?", (new, uid))
+def set_state(uid, state):
+    cur.execute("UPDATE users SET state=? WHERE user_id=?", (state, uid))
     db.commit()
 
-def update_last(uid, now):
-    cur.execute("UPDATE users SET last_message=? WHERE user_id=?", (now, uid))
+# ================= MEMORY =================
+def save_memory(uid, role, content):
+    cur.execute("""
+        INSERT INTO memory(user_id,role,content,ts)
+        VALUES(?,?,?,?)
+    """, (uid, role, content, int(time.time())))
     db.commit()
+
+def load_memory(uid, limit=6):
+    cur.execute("""
+        SELECT role,content FROM memory
+        WHERE user_id=?
+        ORDER BY id DESC
+        LIMIT ?
+    """, (uid, limit))
+    rows = cur.fetchall()
+    rows.reverse()
+    return [{"role": r, "content": c} for r, c in rows]
 
 # ================= MORI DETECTOR =================
 def is_calling_mori(msg, text):
@@ -151,36 +166,29 @@ def is_calling_mori(msg, text):
 def anti_spam(uid, chat_id, now):
     key = f"{uid}:{chat_id}"
     last = spam.get(key, 0)
-
-    if now - last < 4:
+    if now - last < 3:
         return False
-
     spam[key] = now
     return True
 
-# ================= MEMORY =================
-def add_memory(uid, user_text, bot_text):
-    memory[uid].append({"u": user_text, "b": bot_text})
-
-def build_messages(uid, text):
-    msgs = [
-        {"role": "system", "content": "تو موری هستی، دستیار فارسی هوشمند، کوتاه و مفید و دوستانه."}
-    ]
-
-    for m in memory[uid]:
-        msgs.append({"role": "user", "content": m["u"]})
-        msgs.append({"role": "assistant", "content": m["b"]})
-
-    msgs.append({"role": "user", "content": text})
-    return msgs
-
 # ================= AI =================
 def ask_ai(uid, text):
+    messages = [
+        {
+            "role": "system",
+            "content": "تو موری هستی، یک دستیار فارسی هوشمند، کوتاه، دقیق و کاربردی. اگر لازم نبود توضیح اضافه نده."
+        }
+    ]
+
+    messages += load_memory(uid, 6)
+    messages.append({"role": "user", "content": text})
+
     res = client.chat.completions.create(
         model="Qwen/Qwen3-8B",
-        messages=build_messages(uid, text),
+        messages=messages,
         max_tokens=300
     )
+
     return res.choices[0].message.content
 
 # ================= WORKER =================
@@ -190,8 +198,11 @@ def worker():
 
         try:
             reply = ask_ai(uid, text)
+
             send(chat_id, reply, reply_to=msg_id)
-            add_memory(uid, text, reply)
+
+            save_memory(uid, "user", text)
+            save_memory(uid, "assistant", reply)
 
         except Exception as e:
             print("AI ERROR:", e)
@@ -201,11 +212,8 @@ def worker():
 
 threading.Thread(target=worker, daemon=True).start()
 
-# ================= API =================
-threading.Thread(target=run_api, daemon=True).start()
-
-# ================= MAIN LOOP =================
-print("MORI PRO 2 RUNNING")
+# ================= MAIN =================
+print("MORI PRO 3 RUNNING")
 
 offset = 0
 
@@ -228,6 +236,9 @@ while True:
             text = msg.get("text", "")
             msg_id = msg.get("message_id")
 
+            if not text:
+                continue
+
             vip, last, banned, state = get_user(uid)
             now = int(time.time())
 
@@ -239,34 +250,27 @@ while True:
 
             update_last(uid, now)
 
-            if not text:
-                continue
+            # ================= GROUP FILTER =================
+            if msg["chat"]["type"] != "private":
+                if not is_calling_mori(msg, text):
+                    continue
+                if not anti_spam(uid, chat_id, now):
+                    continue
 
-            # VIP payment state
-            if state and text:
+            # ================= VIP STATE (PAYMENT SIMPLE) =================
+            if state.startswith("vip_"):
                 cur.execute("""
                     INSERT INTO payments(user_id,plan,tracking)
                     VALUES(?,?,?)
                 """, (uid, state, text))
                 db.commit()
 
-                set_vip(uid, {"vip_1":1,"vip_7":7,"vip_30":30}.get(state, 0))
                 set_state(uid, "")
 
-                send(chat_id, "✅ VIP فعال شد", reply_to=msg_id)
+                send(chat_id, "✅ پرداخت ثبت شد", reply_to=msg_id)
                 continue
 
-            # ================= MORI SMART FILTER =================
-            chat_type = msg["chat"]["type"]
-
-            if chat_type != "private":
-                if not is_calling_mori(msg, text):
-                    continue
-
-                if not anti_spam(uid, chat_id, now):
-                    continue
-
-            # ================= QUEUE AI =================
+            # ================= QUEUE =================
             task_queue.put((uid, chat_id, msg_id, text))
 
     except Exception as e:
