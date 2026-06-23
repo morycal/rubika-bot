@@ -9,3 +9,9 @@ yt-dlp
 fastapi
 uvicorn
 openai
+numpy
+np
+faiss
+fitz
+docx
+sentence_transformers
