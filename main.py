@@ -37,7 +37,9 @@ id INTEGER PRIMARY KEY AUTOINCREMENT,
 user_id INTEGER,
 plan TEXT,
 tracking TEXT,
-status INTEGER DEFAULT 0
+status INTEGER DEFAULT 0,
+amount INTEGER DEFAULT 0,
+paid_at INTEGER DEFAULT 0
 )
 """)
 
@@ -87,7 +89,7 @@ def get_memory(uid):
         SELECT role,text FROM memory
         WHERE user_id=?
         ORDER BY id DESC
-        LIMIT 8
+        LIMIT 10
     """, (uid,))
     return cur.fetchall()[::-1]
 
@@ -112,6 +114,34 @@ def ask_ai(uid, text):
 
     return answer
 
+# ================= REVENUE =================
+def total_revenue():
+    cur.execute("SELECT SUM(amount) FROM payments WHERE status=1")
+    return cur.fetchone()[0] or 0
+
+def today_revenue():
+    start = int(time.time()) - 86400
+    cur.execute("SELECT SUM(amount) FROM payments WHERE status=1 AND paid_at>?", (start,))
+    return cur.fetchone()[0] or 0
+
+def month_revenue():
+    start = int(time.time()) - 30*86400
+    cur.execute("SELECT SUM(amount) FROM payments WHERE status=1 AND paid_at>?", (start,))
+    return cur.fetchone()[0] or 0
+
+def vip_count():
+    now = int(time.time())
+    cur.execute("SELECT COUNT(*) FROM users WHERE vip_until>?", (now,))
+    return cur.fetchone()[0]
+
+# ================= VIP PRICES =================
+PLANS = {
+    "vip_1": (1, 10000),
+    "vip_7": (7, 50000),
+    "vip_30": (30, 150000),
+    "vip_365": (365, 1000000)
+}
+
 # ================= UI =================
 def start_menu(chat_id):
     send(chat_id,
@@ -120,7 +150,7 @@ def start_menu(chat_id):
              "inline_keyboard": [
                  [{"text": "👤 پروفایل", "callback_data": "profile"}],
                  [{"text": "💎 خرید VIP", "callback_data": "vip_menu"}],
-                 [{"text": "🤖 چت AI", "callback_data": "ai_mode"}],
+                 [{"text": "🤖 چت AI", "callback_data": "ai"}],
                  [{"text": "🧑‍💻 پشتیبانی", "url": "https://t.me/ahmmad24"}]
              ]
          })
@@ -136,14 +166,21 @@ def vip_menu(chat_id):
              ]
          })
 
-def admin_panel(chat_id):
+def admin_dashboard(chat_id):
     send(chat_id,
-         "👑 پنل ادمین",
+         f"""
+👑 <b>داشبورد درآمد</b>
+
+💰 کل درآمد: {total_revenue()}
+📅 امروز: {today_revenue()}
+📆 ماهانه: {month_revenue()}
+
+👥 VIP فعال: {vip_count()}
+""",
          reply_markup={
              "inline_keyboard": [
-                 [{"text": "📊 آمار", "callback_data": "admin_stats"}],
-                 [{"text": "💳 پرداخت‌ها", "callback_data": "admin_payments"}],
-                 [{"text": "🧹 پاکسازی مموری", "callback_data": "admin_clear"}],
+                 [{"text": "🔄 رفرش", "callback_data": "admin_stats"}],
+                 [{"text": "💳 پرداخت‌ها", "callback_data": "admin_payments"}]
              ]
          })
 
@@ -170,7 +207,15 @@ while True:
                 chat_id = cq["message"]["chat"]["id"]
                 uid = cq["from"]["id"]
 
-                # ===== MAIN MENU =====
+                # ===== VIP =====
+                if d in PLANS:
+                    days, price = PLANS[d]
+                    set_state(uid, f"pay_{d}")
+
+                    send(chat_id,
+                         f"💳 پلن انتخاب شد\n💰 قیمت: {price}\n💳 کارت: {CARD}\n\n📩 کد پرداخت را ارسال کنید")
+                    continue
+
                 if d == "vip_menu":
                     vip_menu(chat_id)
                     continue
@@ -178,54 +223,19 @@ while True:
                 if d == "profile":
                     q, vip, last, st = get_user(uid)
                     send(chat_id,
-                         f"👤 پروفایل\n"
-                         f"📊 سوالات: {q}\n"
-                         f"💎 VIP: {'فعال' if vip > time.time() else 'غیرفعال'}")
+                         f"👤 پروفایل\n📊 سوالات: {q}\n💎 VIP: {'فعال' if vip > time.time() else 'غیرفعال'}")
                     continue
 
-                if d == "ai_mode":
+                if d == "ai":
                     set_state(uid, "ai")
-                    send(chat_id, "🤖 حالت AI فعال شد")
-                    continue
-
-                # ===== VIP PLANS =====
-                plans = {
-                    "vip_1": (1, 10000),
-                    "vip_7": (7, 50000),
-                    "vip_30": (30, 150000),
-                    "vip_365": (365, 1000000)
-                }
-
-                if d in plans:
-                    days, price = plans[d]
-
-                    set_state(uid, f"pay_{days}")
-
-                    send(chat_id,
-                         f"💳 پلن انتخاب شد\n"
-                         f"💰 قیمت: {price}\n"
-                         f"💳 کارت: {CARD}\n\n"
-                         f"📩 حالا کد پرداخت را ارسال کنید",
-                         reply_markup={
-                             "inline_keyboard": [
-                                 [{"text": "📩 ارسال کد", "callback_data": "send_code"}]
-                             ]
-                         })
-                    continue
-
-                if d == "send_code":
-                    send(chat_id, "✍️ کد پرداخت را ارسال کنید")
+                    send(chat_id, "🤖 AI فعال شد")
                     continue
 
                 # ===== ADMIN =====
                 if uid == ADMIN_ID:
 
                     if d == "admin_stats":
-                        users = cur.execute("SELECT COUNT(*) FROM users").fetchone()[0]
-                        pending = cur.execute("SELECT COUNT(*) FROM payments WHERE status=0").fetchone()[0]
-
-                        send(chat_id,
-                             f"📊 آمار:\n👥 کاربران: {users}\n💳 در انتظار: {pending}")
+                        admin_dashboard(chat_id)
                         continue
 
                     if d == "admin_payments":
@@ -254,16 +264,11 @@ while True:
                     if d.startswith("ok_"):
                         pid = int(d.split("_")[1])
 
-                        cur.execute("UPDATE payments SET status=1 WHERE id=?", (pid,))
+                        cur.execute("UPDATE payments SET status=1,amount=100000 WHERE id=?", (pid,))
+                        cur.execute("UPDATE payments SET paid_at=? WHERE id=?", (int(time.time()), pid))
                         db.commit()
 
-                        send(chat_id, f"✅ تایید شد: {pid}")
-                        continue
-
-                    if d == "admin_clear":
-                        cur.execute("DELETE FROM memory")
-                        db.commit()
-                        send(chat_id, "🧹 مموری پاک شد")
+                        send(chat_id, "✅ تایید شد")
                         continue
 
                 continue
@@ -285,24 +290,22 @@ while True:
             now = int(time.time())
 
             if uid != ADMIN_ID and now - last < 3:
-                send(chat_id, "⏳ کمی صبر کن")
+                send(chat_id, "⏳ صبر کن")
                 continue
 
             update_last(uid, now)
 
-            cmd = text.split("@")[0]
-
             # ===== START =====
-            if cmd == "/start":
+            if text == "/start":
                 start_menu(chat_id)
                 continue
 
-            # ===== ADMIN PANEL =====
-            if cmd == "/admin" and uid == ADMIN_ID:
-                admin_panel(chat_id)
+            # ===== ADMIN =====
+            if text == "/admin" and uid == ADMIN_ID:
+                admin_dashboard(chat_id)
                 continue
 
-            # ===== VIP LIMIT =====
+            # ===== LIMIT =====
             if vip < now and q >= 5:
                 send(chat_id,
                      "🚫 محدود شدی",
@@ -315,18 +318,18 @@ while True:
 
             # ===== PAYMENT INPUT =====
             if state.startswith("pay_"):
-                plan_days = state.split("_")[1]
+                plan = state.replace("pay_", "")
 
                 cur.execute("""
                     INSERT INTO payments(user_id,plan,tracking)
                     VALUES(?,?,?)
-                """, (uid, plan_days, text))
+                """, (uid, plan, text))
                 db.commit()
 
                 set_state(uid, "")
 
-                send(chat_id, "✅ ثبت شد و برای ادمین ارسال شد")
-                send(ADMIN_ID, f"💳 پرداخت جدید\nUser:{uid}\nPlan:{plan_days}\nCode:{text}")
+                send(chat_id, "✅ ثبت شد")
+                send(ADMIN_ID, f"💳 جدید\n{uid}\n{plan}\n{text}")
                 continue
 
             # ===== AI =====
@@ -334,7 +337,7 @@ while True:
                 answer = ask_ai(uid, text)
                 send(chat_id, answer)
             except:
-                send(chat_id, "❌ خطا در AI")
+                send(chat_id, "❌ خطا")
 
     except Exception as e:
         print("ERR:", e)
