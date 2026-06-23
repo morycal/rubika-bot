@@ -120,19 +120,19 @@ while True:
             timeout=35
         ).json()
 
- for upd in data.get("result", []):
+    for upd in data.get("result", []):
 
-    print(upd)
+      print(upd)
 
-    offset = upd["update_id"] + 1
+      offset = upd["update_id"] + 1
 
-    if "message" not in upd:
-        continue
+      if "message" not in upd:
+          continue
 
-    msg = upd["message"]
-    uid = msg["from"]["id"]
-    chat_id = msg["chat"]["id"]
-    text = msg.get("text","").strip()
+       msg = upd["message"]
+       uid = msg["from"]["id"]
+       chat_id = msg["chat"]["id"]
+       text = msg.get("text","").strip()
 
             if not text:
                 continue
