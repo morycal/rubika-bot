@@ -344,7 +344,7 @@ while True:
                shop(chat_id)
                continue
 
-             if text == "/admin" and uid == ADMIN_ID:
+             if uid == ADMIN_ID and text == "/admin":
                 admin_panel(chat_id)
                 continue
 
