@@ -120,11 +120,13 @@ while True:
             timeout=35
         ).json()
 
-        for upd in data.get("result", []):
-            offset = upd["update_id"] + 1
+      for upd in data.get("result", []):
+    print(upd)   # ← این خط را اضافه کن
 
-            if "message" not in upd:
-                continue
+    offset = upd["update_id"] + 1
+
+    if "message" not in upd:
+        continue
 
             msg = upd["message"]
             uid = msg["from"]["id"]
@@ -153,13 +155,26 @@ while True:
             db.commit()
 
             if text == "/start":
-                send(chat_id,
-                "🤖 ربات هوش مصنوعی\n\n"
-                "⭐ 3 سوال رایگان\n"
-                "💎 برای VIP پیام: خرید vip\n"
-                f"پشتیبانی: {SUPPORT}")
-                continue
 
+    requests.post(
+        f"{BASE_URL}/sendMessage",
+        json={
+            "chat_id": chat_id,
+            "text": "تست دکمه شیشه‌ای",
+            "reply_markup": {
+                "inline_keyboard": [
+                    [
+                        {
+                            "text": "تست",
+                            "callback_data": "test"
+                        }
+                    ]
+                ]
+            }
+        }
+    )
+
+    continue
             if text.lower() == "خرید vip":
                 send(chat_id,
                 f"""💎 پلن‌ها
