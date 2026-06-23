@@ -11,7 +11,7 @@ uvicorn
 openai
 numpy
 np
-faiss
-fitz
-docx
+faiss-cpu
+PyMuPDF
+python-docx
 sentence_transformers
