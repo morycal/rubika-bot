@@ -120,10 +120,11 @@ while True:
             timeout=35
         ).json()
 
-      for upd in data.get("result", []):
-          print(upd)   # ← این خط را اضافه کن
+        for upd in data.get("result", []):
 
-          offset = upd["update_id"] + 1
+            print(upd)
+
+            offset = upd["update_id"] + 1
 
           if "message" not in upd:
              continue
