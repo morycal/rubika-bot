@@ -121,12 +121,12 @@ while True:
         ).json()
 
       for upd in data.get("result", []):
-    print(upd)   # ← این خط را اضافه کن
+          print(upd)   # ← این خط را اضافه کن
 
-    offset = upd["update_id"] + 1
+          offset = upd["update_id"] + 1
 
-    if "message" not in upd:
-        continue
+          if "message" not in upd:
+             continue
 
             msg = upd["message"]
             uid = msg["from"]["id"]
