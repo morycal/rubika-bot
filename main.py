@@ -1,186 +1,129 @@
+# main.py
+# Corrected basic version based on the code provided by user
+
 import os
 import time
 import sqlite3
 import requests
-import numpy as np
-from flask import Flask, jsonify
-from sentence_transformers import SentenceTransformer
-import fitz
-import docx
 from openai import OpenAI
 
-# ================= CONFIG =================
-BALE_TOKEN = os.getenv("BALE_TOKEN")
-HF_TOKEN = os.getenv("HF_TOKEN")
+BALE_TOKEN = os.getenv("BALE_TOKEN", "")
+HF_TOKEN = os.getenv("HF_TOKEN", "")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "586110315"))
 
-BASE_URL = f"https://tapi.bale.ai/bot{BALE_TOKEN}"
+CARD_NUMBER = "1010202030304040"
+SUPPORT = "@ahmmad24"
 
 client = OpenAI(
     base_url="https://router.huggingface.co/v1",
     api_key=HF_TOKEN
 )
 
-# ================= MODEL (LAZY SAFE) =================
-embed_model = SentenceTransformer("all-MiniLM-L6-v2")
+BASE_URL = f"https://tapi.bale.ai/bot{BALE_TOKEN}"
 
-# ================= DB =================
 db = sqlite3.connect("bot.db", check_same_thread=False)
 cur = db.cursor()
 
 cur.execute("""
-CREATE TABLE IF NOT EXISTS memory(
+CREATE TABLE IF NOT EXISTS users(
+user_id INTEGER PRIMARY KEY,
+questions INTEGER DEFAULT 0,
+vip_until INTEGER DEFAULT 0,
+banned INTEGER DEFAULT 0,
+last_message INTEGER DEFAULT 0
+)
+""")
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS history(
 id INTEGER PRIMARY KEY AUTOINCREMENT,
 user_id INTEGER,
 role TEXT,
-text TEXT
+message TEXT
+)
+""")
+
+cur.execute("""
+CREATE TABLE IF NOT EXISTS payments(
+id INTEGER PRIMARY KEY AUTOINCREMENT,
+user_id INTEGER,
+plan TEXT,
+tracking_code TEXT,
+status INTEGER DEFAULT 0,
+created_at INTEGER
 )
 """)
 
 db.commit()
 
-# ================= MEMORY STORE =================
-docs = []
-embeddings = []
-
-# ================= FLASK =================
-app = Flask(__name__)
-
-@app.route("/api/status")
-def status():
-    return jsonify({"docs": len(docs)})
-
-def run_api():
-    port = int(os.getenv("PORT", 5000))
-    app.run(host="0.0.0.0", port=port)
-
-# ================= UTIL =================
 def send(chat_id, text):
     requests.post(
         f"{BASE_URL}/sendMessage",
-        json={"chat_id": chat_id, "text": text[:4000]}
+        json={"chat_id": chat_id, "text": str(text)[:4000]},
+        timeout=30
     )
 
-# ================= MEMORY =================
-def save_memory(uid, role, text):
+def get_user(uid):
     cur.execute(
-        "INSERT INTO memory(user_id,role,text) VALUES(?,?,?)",
-        (uid, role, text[:2000])
+        "SELECT questions,vip_until,banned,last_message FROM users WHERE user_id=?",
+        (uid,)
+    )
+    row = cur.fetchone()
+
+    if row:
+        return row
+
+    cur.execute("INSERT INTO users(user_id) VALUES(?)", (uid,))
+    db.commit()
+    return (0, 0, 0, 0)
+
+def add_history(uid, role, msg):
+    cur.execute(
+        "INSERT INTO history(user_id,role,message) VALUES(?,?,?)",
+        (uid, role, msg[:3000])
     )
     db.commit()
 
-def get_memory(uid):
-    cur.execute("""
-        SELECT role,text FROM memory
-        WHERE user_id=?
-        ORDER BY id DESC
-        LIMIT 10
-    """, (uid,))
-    return cur.fetchall()[::-1]
-
-# ================= EMBEDDING =================
-def embed(text):
-    return embed_model.encode(text)
-
-def add_doc(text):
-    docs.append(text)
-    embeddings.append(embed(text))
-
-# ================= PDF / DOCX =================
-def load_pdf(path):
-    doc = fitz.open(path)
-    for page in doc:
-        add_doc(page.get_text())
-
-def load_docx(path):
-    d = docx.Document(path)
-    text = "\n".join([p.text for p in d.paragraphs])
-    add_doc(text)
-
-# ================= COSINE SEARCH =================
-def search(query, top_k=5):
-    if len(docs) == 0:
-        return []
-
-    q = embed(query)
-
-    scores = []
-
-    for i, emb in enumerate(embeddings):
-        sim = np.dot(q, emb) / (np.linalg.norm(q) * np.linalg.norm(emb))
-        scores.append((sim, docs[i]))
-
-    scores.sort(reverse=True, key=lambda x: x[0])
-
-    return [t for _, t in scores[:top_k]]
-
-# ================= WEB RAG =================
-def web_search(q):
-    try:
-        r = requests.get(f"https://duckduckgo.com/html/?q={q}", timeout=10)
-        return [r.text[:1500]]
-    except:
-        return []
-
-def add_web(q):
-    for r in web_search(q):
-        add_doc(r)
-
-# ================= AI CORE =================
 def ask_ai(uid, text):
+    msgs = [{"role": "system", "content": "تو یک دستیار فارسی حرفه‌ای هستی."}]
 
-    if "?" in text:
-        add_web(text)
+    cur.execute("""
+    SELECT role,message
+    FROM history
+    WHERE user_id=?
+    ORDER BY id DESC
+    LIMIT 10
+    """, (uid,))
 
-    context = search(text)
-    memory = get_memory(uid)
+    rows = cur.fetchall()[::-1]
 
-    messages = [{
-        "role": "system",
-        "content": "تو یک AI هوشمند هستی. دقیق و تحلیلی جواب بده."
-    }]
+    for r, m in rows:
+        msgs.append({"role": r, "content": m})
 
-    for r, t in memory:
-        messages.append({"role": r, "content": t})
-
-    if context:
-        messages.append({
-            "role": "system",
-            "content": "📚 Context:\n" + "\n".join(context)
-        })
-
-    messages.append({"role": "user", "content": text})
+    msgs.append({"role": "user", "content": text})
 
     res = client.chat.completions.create(
         model="Qwen/Qwen3-8B",
-        messages=messages,
-        max_tokens=500,
-        temperature=0.6
+        messages=msgs,
+        max_tokens=300
     )
 
-    answer = res.choices[0].message.content
+    return res.choices[0].message.content
 
-    save_memory(uid, "user", text)
-    save_memory(uid, "assistant", answer)
-
-    return answer
-
-# ================= BOT LOOP =================
-print("🚀 LIGHT RAG BOT STARTED")
-
-import threading
-threading.Thread(target=run_api).start()
-
+print("BOT STARTED")
 offset = 0
 
 while True:
     try:
         data = requests.get(
             f"{BASE_URL}/getUpdates",
-            params={"offset": offset, "timeout": 30}
+            params={"offset": offset, "timeout": 30},
+            timeout=35
         ).json()
 
         for upd in data.get("result", []):
+
+            print(upd)
 
             offset = upd["update_id"] + 1
 
@@ -195,16 +138,39 @@ while True:
             if not text:
                 continue
 
+            q, vip, banned, last = get_user(uid)
+
+            if banned:
+                send(chat_id, "⛔ شما مسدود هستید.")
+                continue
+
+            now = int(time.time())
+
+            if uid != ADMIN_ID and now - last < 5:
+                send(chat_id, "⏳ کمی صبر کنید.")
+                continue
+
+            cur.execute(
+                "UPDATE users SET last_message=? WHERE user_id=?",
+                (now, uid)
+            )
+            db.commit()
+
             if text == "/start":
-                send(chat_id, "🤖 AI آماده است (Light RAG Mode)")
+                send(chat_id, "🤖 ربات فعال است.")
                 continue
 
             try:
                 answer = ask_ai(uid, text)
+
+                add_history(uid, "user", text)
+                add_history(uid, "assistant", answer)
+
                 send(chat_id, answer)
+
             except Exception as e:
-                send(chat_id, "خطا در پردازش")
+                send(chat_id, f"خطا: {e}")
 
     except Exception as e:
-        print("ERR:", e)
-        time.sleep(3)
+        print("ERR", e)
+        time.sleep(5)
