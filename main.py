@@ -4,13 +4,11 @@ import sqlite3
 import requests
 from openai import OpenAI
 
-# ================= CONFIG =================
 BALE_TOKEN = os.getenv("BALE_TOKEN")
 HF_TOKEN = os.getenv("HF_TOKEN")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "586110315"))
 
 BASE_URL = f"https://tapi.bale.ai/bot{BALE_TOKEN}"
-
 CARD = "1010202030304040"
 
 client = OpenAI(
@@ -28,16 +26,7 @@ user_id INTEGER PRIMARY KEY,
 questions INTEGER DEFAULT 0,
 vip_until INTEGER DEFAULT 0,
 last_message INTEGER DEFAULT 0,
-banned INTEGER DEFAULT 0
-)
-""")
-
-cur.execute("""
-CREATE TABLE IF NOT EXISTS history(
-id INTEGER PRIMARY KEY AUTOINCREMENT,
-user_id INTEGER,
-role TEXT,
-message TEXT
+state TEXT DEFAULT ''
 )
 """)
 
@@ -55,66 +44,47 @@ db.commit()
 
 # ================= SEND =================
 def send(chat_id, text, reply_markup=None):
-    data = {
-        "chat_id": chat_id,
-        "text": text[:4000],
-        "parse_mode": "HTML"
-    }
+    data = {"chat_id": chat_id, "text": text[:4000]}
     if reply_markup:
         data["reply_markup"] = reply_markup
 
-    requests.post(f"{BASE_URL}/sendMessage", json=data, timeout=20)
+    requests.post(f"{BASE_URL}/sendMessage", json=data)
 
 # ================= USER =================
 def get_user(uid):
-    cur.execute("SELECT questions,vip_until,last_message,banned FROM users WHERE user_id=?", (uid,))
+    cur.execute("SELECT questions,vip_until,last_message,state FROM users WHERE user_id=?", (uid,))
     row = cur.fetchone()
+
     if not row:
         cur.execute("INSERT INTO users(user_id) VALUES(?)", (uid,))
         db.commit()
-        return (0, 0, 0, 0)
+        return (0, 0, 0, "")
+
     return row
+
+def set_state(uid, state):
+    cur.execute("UPDATE users SET state=? WHERE user_id=?", (state, uid))
+    db.commit()
 
 def update_last(uid, now):
     cur.execute("UPDATE users SET last_message=? WHERE user_id=?", (now, uid))
     db.commit()
 
-def add_history(uid, role, msg):
-    cur.execute(
-        "INSERT INTO history(user_id,role,message) VALUES(?,?,?)",
-        (uid, role, msg[:2000])
-    )
-    db.commit()
+# ================= UI =================
+def start_menu(chat_id):
+    send(chat_id,
+         "👋 خوش آمدید",
+         reply_markup={
+             "inline_keyboard": [
+                 [{"text": "👤 پروفایل", "callback_data": "profile"}],
+                 [{"text": "💎 خرید VIP", "callback_data": "buy_vip"}],
+                 [{"text": "🤖 چت با AI", "callback_data": "ai"}],
+                 [{"text": "🧑‍💻 پشتیبانی", "url": "https://t.me/ahmmad24"}]
+             ]
+         })
 
-# ================= AI =================
-def ask_ai(uid, text):
-    msgs = [{"role": "system", "content": "تو یک دستیار فارسی حرفه‌ای هستی."}]
-
-    cur.execute("""
-        SELECT role,message FROM history
-        WHERE user_id=?
-        ORDER BY id DESC
-        LIMIT 8
-    """, (uid,))
-
-    rows = cur.fetchall()[::-1]
-
-    for r, m in rows:
-        msgs.append({"role": r, "content": m})
-
-    msgs.append({"role": "user", "content": text})
-
-    res = client.chat.completions.create(
-        model="Qwen/Qwen3-8B",
-        messages=msgs,
-        max_tokens=300
-    )
-
-    return res.choices[0].message.content
-
-# ================= VIP MENU =================
 def vip_menu(chat_id):
-    send(chat_id, "💎 انتخاب پلن VIP:",
+    send(chat_id, "💎 انتخاب پلن:",
          reply_markup={
              "inline_keyboard": [
                  [{"text": "📅 روزانه - 10k", "callback_data": "vip_1"}],
@@ -124,98 +94,87 @@ def vip_menu(chat_id):
              ]
          })
 
+# ================= AI =================
+def ask_ai(text):
+    res = client.chat.completions.create(
+        model="Qwen/Qwen3-8B",
+        messages=[
+            {"role": "system", "content": "تو یک دستیار فارسی حرفه‌ای هستی"},
+            {"role": "user", "content": text}
+        ],
+        max_tokens=300
+    )
+    return res.choices[0].message.content
+
 # ================= MAIN =================
 print("BOT STARTED")
+
 offset = 0
 
 while True:
     try:
         data = requests.get(
             f"{BASE_URL}/getUpdates",
-            params={"offset": offset, "timeout": 30},
-            timeout=35
+            params={"offset": offset, "timeout": 30}
         ).json()
 
         for upd in data.get("result", []):
 
             offset = upd["update_id"] + 1
 
-            # ================= CALLBACKS =================
+            # ================= CALLBACK =================
             if "callback_query" in upd:
                 cq = upd["callback_query"]
                 data_cb = cq["data"]
-                uid = cq["from"]["id"]
                 chat_id = cq["message"]["chat"]["id"]
+                uid = cq["from"]["id"]
 
-                # ========== VIP ==========
+                # -------- START MENU ACTIONS --------
+                if data_cb == "buy_vip":
+                    vip_menu(chat_id)
+                    continue
+
+                if data_cb == "profile":
+                    q, vip, last, state = get_user(uid)
+                    send(chat_id,
+                         f"👤 پروفایل\n"
+                         f"📊 سوالات: {q}\n"
+                         f"💎 VIP: {'فعال' if vip > time.time() else 'غیرفعال'}")
+                    continue
+
+                if data_cb == "ai":
+                    set_state(uid, "ai")
+                    send(chat_id, "🤖 حالا پیام بده...")
+                    continue
+
+                # -------- VIP SELECT --------
                 plans = {
                     "vip_1": (1, 10000),
                     "vip_7": (7, 50000),
                     "vip_30": (30, 150000),
-                    "vip_365": (365, 1000000),
+                    "vip_365": (365, 1000000)
                 }
 
                 if data_cb in plans:
                     days, price = plans[data_cb]
 
-                    send(chat_id,
-                         f"💳 پرداخت:\n"
-                         f"💰 مبلغ: {price}\n"
-                         f"💳 کارت:\n{CARD}\n\n"
-                         f"📌 بعد از پرداخت:\n"
-                         f"پرداخت {days}d کدپیگیری")
+                    set_state(uid, f"pay_{days}")
 
+                    send(chat_id,
+                         f"💳 پلن انتخاب شد\n"
+                         f"💰 قیمت: {price}\n"
+                         f"💳 کارت:\n{CARD}\n\n"
+                         f"👇 حالا کد پرداخت را ارسال کنید",
+                         reply_markup={
+                             "inline_keyboard": [
+                                 [{"text": "📩 ارسال کد پرداخت", "callback_data": "send_code"}]
+                             ]
+                         })
                     continue
 
-                # ========== ADMIN PANEL ==========
-                if uid == ADMIN_ID:
-
-                    if data_cb == "admin_payments":
-
-                        cur.execute("""
-                            SELECT id,user_id,plan,tracking
-                            FROM payments
-                            WHERE status=0
-                            ORDER BY id DESC
-                            LIMIT 10
-                        """)
-                        rows = cur.fetchall()
-
-                        buttons = []
-
-                        text = "💳 پرداخت‌های در انتظار:\n\n"
-
-                        for i,u,p,t in rows:
-                            text += f"{i} | {u} | {p} | {t}\n"
-                            buttons.append([
-                                {"text": f"✅ تایید {i}", "callback_data": f"ap_{i}"}
-                            ])
-
-                        send(chat_id, text if rows else "خالی",
-                             reply_markup={"inline_keyboard": buttons})
-                        continue
-
-                    if data_cb == "admin_stats":
-
-                        cur.execute("SELECT COUNT(*) FROM users")
-                        users = cur.fetchone()[0]
-
-                        cur.execute("SELECT COUNT(*) FROM payments WHERE status=0")
-                        pend = cur.fetchone()[0]
-
-                        send(chat_id,
-                             f"📊 آمار:\n👥 {users}\n💳 {pend}")
-                        continue
-
-                    if data_cb.startswith("ap_"):
-
-                        pid = int(data_cb.split("_")[1])
-
-                        cur.execute("UPDATE payments SET status=1 WHERE id=?", (pid,))
-                        db.commit()
-
-                        send(chat_id, f"✅ تایید شد: {pid}")
-                        continue
+                if data_cb == "send_code":
+                    send(chat_id, "✍️ کد پرداخت را همینجا ارسال کنید")
+                    continue
 
                 continue
 
@@ -231,93 +190,55 @@ while True:
             if not text:
                 continue
 
-            q, vip_until, last, banned = get_user(uid)
-
-            if banned:
-                send(chat_id, "⛔ شما بن هستید")
-                continue
+            q, vip, last, state = get_user(uid)
 
             now = int(time.time())
 
             if uid != ADMIN_ID and now - last < 3:
-                send(chat_id, "⏳ اسپم نکن")
+                send(chat_id, "⏳ صبر کن")
                 continue
 
             update_last(uid, now)
 
-            cmd = text.split("@")[0].strip()
-
-            # ================= START =================
-            if cmd == "/start":
-                send(chat_id,
-                     "👋 سلام\n"
-                     "🤖 ربات AI فعال است\n"
-                     "💎 خرید VIP: خرید vip")
+            # ================= /start =================
+            if text == "/start":
+                start_menu(chat_id)
                 continue
 
-            # ================= VIP =================
-            if text.lower() == "خرید vip":
-                vip_menu(chat_id)
-                continue
-
-            # ================= ADMIN =================
-            if cmd == "/admin" and uid == ADMIN_ID:
+            # ================= VIP LIMIT =================
+            if vip < now and q >= 5:
                 send(chat_id,
-                     "⚙️ پنل ادمین",
+                     "🚫 محدود شدی",
                      reply_markup={
                          "inline_keyboard": [
-                             [{"text": "💳 پرداخت‌ها", "callback_data": "admin_payments"}],
-                             [{"text": "📊 آمار", "callback_data": "admin_stats"}]
+                             [{"text": "💎 خرید VIP", "callback_data": "buy_vip"}]
                          ]
                      })
                 continue
 
-            # ================= PAY MANUAL =================
-            if text.startswith("پرداخت "):
-                parts = text.split(maxsplit=2)
+            # ================= PAYMENT INPUT =================
+            if state.startswith("pay_"):
 
-                if len(parts) < 3:
-                    send(chat_id, "فرمت: پرداخت ماهانه 123")
-                    continue
-
-                plan = parts[1]
-                track = parts[2]
+                plan_days = state.split("_")[1]
 
                 cur.execute("""
                     INSERT INTO payments(user_id,plan,tracking)
                     VALUES(?,?,?)
-                """, (uid, plan, track))
+                """, (uid, plan_days, text))
                 db.commit()
 
-                send(chat_id, "✅ ثبت شد")
-                send(ADMIN_ID, f"💳 پرداخت\n{uid}\n{plan}\n{track}")
-                continue
+                set_state(uid, "")
 
-            # ================= VIP LIMIT =================
-            is_vip = vip_until > now
-
-            if not is_vip and q >= 5:
-                send(chat_id, "🚫 محدود شدی، VIP بخر")
+                send(chat_id, "✅ ثبت شد، منتظر تایید ادمین باشید")
+                send(ADMIN_ID, f"💳 پرداخت جدید\nUser:{uid}\nPlan:{plan_days}\nCode:{text}")
                 continue
 
             # ================= AI =================
             try:
-                answer = ask_ai(uid, text)
-
-                add_history(uid, "user", text)
-                add_history(uid, "assistant", answer)
-
-                if not is_vip:
-                    cur.execute(
-                        "UPDATE users SET questions=questions+1 WHERE user_id=?",
-                        (uid,)
-                    )
-                    db.commit()
-
+                answer = ask_ai(text)
                 send(chat_id, answer)
-
-            except Exception as e:
-                send(chat_id, "❌ خطای AI")
+            except:
+                send(chat_id, "❌ خطا")
 
     except Exception as e:
         print("ERR:", e)
